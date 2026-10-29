@@ -77,9 +77,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             ? loaded.Profiles
             : [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }];
         _selectedProfile = Profiles[0];
-        var sender = new SendInputKeySender();
-        _runtime = new RuntimeController(new SequenceRunner(sender), sender,
-            new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log")));
+        var logger = new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log"));
+        var sender = new SendInputKeySender(logger);
+        _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
             StateText = state.ToString();

@@ -25,7 +25,7 @@ WPF 控件/全局 WH_KEYBOARD_LL
 - 未发现 `keybd_event`、Windows 消息发送、第三方键盘模拟库或 DLL 注入。
 - `src/InputProbe.Core/Models.cs`：`IKeySender`、调度器、运行状态和配置模型。
 - `src/InputProbe.Core/ConfigStore.cs`：JSON 配置读写。
-- `src/InputProbe.App/FileInputLogger.cs`：文件日志，当前主要记录停止和异常。
+- `src/InputProbe.App/FileInputLogger.cs`：文件日志；运行时和 Windows 输入后端共用，记录成功发送、发送失败、停止、取消和异常。
 
 ## 3. 功能状态
 
@@ -42,7 +42,7 @@ WPF 控件/全局 WH_KEYBOARD_LL
 
 - 输入接口没有显式 `Press`、`Shutdown`，调度器直接拼接 `KeyDown/KeyUp`。
 - 配置没有版本字段、非法步骤校验或未知版本处理。
-- 输入发送失败没有统一异常/日志路径；未知键会静默设置状态后继续。
+- 输入发送失败现在统一抛出并记录异常；未知键不再静默继续。
 - 全局停止键 `Ctrl+Shift+F12` 目前只显示在界面，未按组合键状态识别。
 - 空序列和负数/过大间隔可以启动，可能造成无效循环或异常延迟。
 - 没有独立 Windows 测试窗口；现有测试是 Core 单元测试，不能证明操作系统实际处理时间，也不能证明目标应用兼容。

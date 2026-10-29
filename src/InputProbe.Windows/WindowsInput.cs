@@ -4,8 +4,9 @@ using InputProbe.Core;
 
 namespace InputProbe.Windows;
 
-public sealed class SendInputKeySender : IKeySender
+public sealed class SendInputKeySender(IInputLogger? logger = null) : IKeySender
 {
+    private readonly IInputLogger _logger = logger ?? new NullInputLogger();
     private readonly HashSet<string> _pressed = new(StringComparer.OrdinalIgnoreCase);
     private bool _shutdown;
     public string LastStatus { get; private set; } = "尚未发送";
@@ -17,15 +18,23 @@ public sealed class SendInputKeySender : IKeySender
         ReleaseAll();
         _shutdown = true;
         LastStatus = "输入后端已关闭";
+        _logger.Info(LastStatus);
     }
 
     private void Send(string key, bool up)
     {
-        if (_shutdown) throw new InvalidOperationException("输入后端已关闭");
+        if (_shutdown)
+        {
+            var exception = new InvalidOperationException("输入后端已关闭");
+            _logger.Error("输入发送被拒绝", exception);
+            throw exception;
+        }
         if (!KeyMap.TryGetValue(key, out var vk))
         {
             LastStatus = $"未映射按键: {key}";
-            throw new ArgumentException(LastStatus, nameof(key));
+            var exception = new ArgumentException(LastStatus, nameof(key));
+            _logger.Error(LastStatus, exception);
+            throw exception;
         }
         var flags = up ? 0x0002u : 0u;
         var input = new INPUT { type = 1, U = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, wScan = 0, dwFlags = flags } } };
@@ -33,9 +42,12 @@ public sealed class SendInputKeySender : IKeySender
         {
             var error = Marshal.GetLastWin32Error();
             LastStatus = $"SendInput 失败: {error}";
-            throw new System.ComponentModel.Win32Exception(error, LastStatus);
+            var exception = new System.ComponentModel.Win32Exception(error, LastStatus);
+            _logger.Error(LastStatus, exception);
+            throw exception;
         }
         LastStatus = $"已发送 {key} {(up ? "Up" : "Down")}";
+        _logger.Info(LastStatus);
         if (up) _pressed.Remove(key); else _pressed.Add(key);
     }
 
