@@ -5,7 +5,7 @@ public enum RuntimeState { Stopped, Armed, Running, Paused }
 public sealed class KeyStep
 {
     public KeyStep() { }
-    public KeyStep(string key, int holdMs = 30, int waitAfterMs = 80) => (Key, HoldMs, WaitAfterMs) = (key, holdMs, waitAfterMs);
+    public KeyStep(string key, int holdMs = 0, int waitAfterMs = 80) => (Key, HoldMs, WaitAfterMs) = (key, holdMs, waitAfterMs);
     public string Key { get; set; } = "D1";
     public int HoldMs { get; set; } = 30;
     public int WaitAfterMs { get; set; } = 80;
@@ -48,14 +48,7 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? gu
             cancellationToken.ThrowIfCancellationRequested();
             if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
             sender.KeyDown(step.Key);
-            try
-            {
-                await Task.Delay(step.HoldMs, cancellationToken);
-            }
-            finally
-            {
-                sender.KeyUp(step.Key);
-            }
+            sender.KeyUp(step.Key);
             await Task.Delay(step.WaitAfterMs, cancellationToken);
         }
         return true;
