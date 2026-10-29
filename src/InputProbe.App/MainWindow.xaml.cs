@@ -74,7 +74,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         MoveStepDownCommand = new RelayCommand(_ => MoveStep(1));
         CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start));
         CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop));
-        CaptureSequenceCommand = new RelayCommand(_ => BeginSequenceCapture());
+        CaptureSequenceCommand = new RelayCommand(parameter => BeginSequenceCapture(parameter));
     }
 
     private async Task SaveAsync()
@@ -135,8 +135,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SelectedProfile));
     }
 
-    private void BeginSequenceCapture()
+    private void BeginSequenceCapture(object? parameter)
     {
+        if (parameter is KeyStep step) SelectedStep = step;
         if (SelectedStep is null)
         {
             AddStep();
