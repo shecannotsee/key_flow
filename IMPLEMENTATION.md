@@ -9,6 +9,8 @@
 - App：WPF 控制台初版，包含配置档案、触发键、目标进程、序列列表、启用/暂停/停止/测试触发、状态和诊断区域。
 - UI：按 Apple HIG 原则重做浅色主题，并拆分为 `HeaderBar`、`ProfileSidebar`、`ProfileEditor`、`StatusSidebar` 四个 UserControl。
 - Profile：支持开始按键、结束按键、目标进程、序列按键、按下时长、步骤间隔，以及序列项增删和上下移动。
+- 录制：开始键、结束键和序列键均支持“录制”按钮，点击后捕获下一次全局按键并写入配置。
+- 输入：当前阶段关闭目标窗口限制，工具启用后可在任意前台窗口验证；后续再作为可选安全开关恢复窗口限制。
 - 设计：`APPLE_DESIGN_GUIDE.md` 与 `Themes/AppleTheme.xaml` 记录并实现颜色、间距、字体、圆角和状态反馈基线。
 - 根目录：`Start-InputProbe.cmd`，构建后可双击启动应用。
 - 文档：`TECH_PLAN.md` 记录技术路线、分层、游戏拦截处理和 UI 规划。

@@ -6,6 +6,6 @@
       <Border Grid.Column="1" Background="{StaticResource SurfaceBackground}" CornerRadius="12" Padding="24" Margin="0,0,16,0"><controls:ProfileEditor/></Border>
       <controls:StatusSidebar Grid.Column="2"/>
     </Grid>
-    <TextBlock Grid.Row="2" Text="Ctrl+Shift+F12 紧急停止  ·  仅在目标窗口前台时发送  ·  标准输入模式" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,16,0,0"/>
+    <TextBlock Grid.Row="2" Text="结束按键可随时停止  ·  当前不限制目标窗口  ·  标准输入模式" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,16,0,0"/>
   </Grid>
 </Window>

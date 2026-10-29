@@ -39,14 +39,14 @@ public interface IForegroundWindowGuard
     bool IsTargetForeground(string targetProcess);
 }
 
-public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard guard)
+public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? guard = null)
 {
     public async Task<bool> RunAsync(KeyProfile profile, CancellationToken cancellationToken)
     {
         foreach (var step in profile.Steps)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!guard.IsTargetForeground(profile.TargetProcess)) return false;
+            if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
             sender.KeyDown(step.Key);
             try
             {

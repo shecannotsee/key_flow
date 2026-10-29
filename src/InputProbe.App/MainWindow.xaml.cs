@@ -22,12 +22,14 @@ public partial class MainWindow : Window
 
 public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 {
+    private enum CaptureMode { None, Start, Stop, Sequence }
     private readonly JsonConfigStore _store = new(Path.Combine(AppContext.BaseDirectory, "config.json"));
     private readonly RuntimeController _runtime;
     private KeyProfile _selectedProfile;
     private string _stateText = "Stopped";
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
+    private CaptureMode _captureMode;
     private readonly LowLevelKeyboardHook _keyboardHook;
 
     public List<KeyProfile> Profiles { get; } = [new KeyProfile { Name = "基础序列", TargetProcess = "jx3client", Steps = [new("D1"), new("D2")] }];
@@ -44,12 +46,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand RemoveStepCommand { get; }
     public ICommand MoveStepUpCommand { get; }
     public ICommand MoveStepDownCommand { get; }
+    public ICommand CaptureStartCommand { get; }
+    public ICommand CaptureStopCommand { get; }
+    public ICommand CaptureSequenceCommand { get; }
+    public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
 
     public MainViewModel()
     {
         _selectedProfile = Profiles[0];
         var sender = new SendInputKeySender();
-        _runtime = new RuntimeController(new SequenceRunner(sender, new ForegroundWindowGuard()), sender);
+        _runtime = new RuntimeController(new SequenceRunner(sender), sender);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
             StateText = state.ToString();
@@ -66,6 +72,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         RemoveStepCommand = new RelayCommand(_ => RemoveStep());
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1));
         MoveStepDownCommand = new RelayCommand(_ => MoveStep(1));
+        CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start));
+        CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop));
+        CaptureSequenceCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Sequence));
     }
 
     private async Task SaveAsync()
@@ -77,15 +86,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnGlobalKeyChanged(int virtualKey, bool isDown)
     {
         if (!isDown) return;
-        var key = virtualKey switch
+        var key = VirtualKeyNames.FromVirtualKey(virtualKey);
+        if (_captureMode != CaptureMode.None)
         {
-            >= 0x70 and <= 0x7B => $"F{virtualKey - 0x6F}",
-            >= 0x30 and <= 0x39 => $"D{virtualKey - 0x30}",
-            0x20 => "Space",
-            0x0D => "Enter",
-            0x1B => "Escape",
-            _ => string.Empty
-        };
+            Application.Current.Dispatcher.Invoke(() => CompleteCapture(key));
+            return;
+        }
         if (string.Equals(key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))
         {
             _runtime.Stop("按下结束按键");
@@ -98,9 +104,32 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void AddStep()
+    private void BeginCapture(CaptureMode mode)
     {
-        SelectedProfile.Steps = [.. SelectedProfile.Steps, new KeyStep("D1")];
+        _captureMode = mode;
+        OnPropertyChanged(nameof(CaptureText));
+    }
+
+    private void CompleteCapture(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        switch (_captureMode)
+        {
+            case CaptureMode.Start: SelectedProfile.StartHotkey = key; break;
+            case CaptureMode.Stop: SelectedProfile.StopHotkey = key; break;
+            case CaptureMode.Sequence: AddStep(key); break;
+        }
+        _captureMode = CaptureMode.None;
+        OnPropertyChanged(nameof(SelectedProfile));
+        OnPropertyChanged(nameof(CaptureText));
+    }
+
+    private void AddStep()
+        => AddStep("D1");
+
+    private void AddStep(string key)
+    {
+        SelectedProfile.Steps = [.. SelectedProfile.Steps, new KeyStep(key)];
         OnPropertyChanged(nameof(SelectedProfile));
     }
 
