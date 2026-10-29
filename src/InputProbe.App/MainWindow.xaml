@@ -1,0 +1,11 @@
+<Window x:Class="InputProbe.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:InputProbe.App.Controls" Title="Input Probe" Width="1120" Height="720" Background="{StaticResource PageBackground}" WindowStartupLocation="CenterScreen">
+  <Grid Margin="24"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <controls:HeaderBar/>
+    <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+      <Border Grid.Column="0" Background="{StaticResource SurfaceBackground}" CornerRadius="12" Padding="18" Margin="0,0,16,0"><controls:ProfileSidebar/></Border>
+      <Border Grid.Column="1" Background="{StaticResource SurfaceBackground}" CornerRadius="12" Padding="24" Margin="0,0,16,0"><controls:ProfileEditor/></Border>
+      <controls:StatusSidebar Grid.Column="2"/>
+    </Grid>
+    <TextBlock Grid.Row="2" Text="Ctrl+Shift+F12 紧急停止  ·  仅在目标窗口前台时发送  ·  标准输入模式" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,16,0,0"/>
+  </Grid>
+</Window>

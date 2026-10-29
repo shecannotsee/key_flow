@@ -1,0 +1,93 @@
+namespace InputProbe.Core;
+
+public enum RuntimeState { Stopped, Armed, Running, Paused }
+
+public sealed record KeyStep(string Key, int HoldMs = 30, int WaitAfterMs = 80);
+
+public sealed class KeyProfile
+{
+    public string Name { get; set; } = "新建配置";
+    public string TargetProcess { get; set; } = "";
+    public string Trigger { get; set; } = "F8";
+    public List<KeyStep> Steps { get; set; } = [];
+    public bool Enabled { get; set; }
+}
+
+public sealed class AppConfig
+{
+    public List<KeyProfile> Profiles { get; set; } = [];
+    public string PanicHotkey { get; set; } = "Ctrl+Shift+F12";
+}
+
+public interface IKeySender
+{
+    void KeyDown(string key);
+    void KeyUp(string key);
+    void ReleaseAll();
+}
+
+public interface IForegroundWindowGuard
+{
+    bool IsTargetForeground(string targetProcess);
+}
+
+public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard guard)
+{
+    public async Task RunAsync(KeyProfile profile, CancellationToken cancellationToken)
+    {
+        foreach (var step in profile.Steps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!guard.IsTargetForeground(profile.TargetProcess)) return;
+            sender.KeyDown(step.Key);
+            try
+            {
+                await Task.Delay(step.HoldMs, cancellationToken);
+            }
+            finally
+            {
+                sender.KeyUp(step.Key);
+            }
+            await Task.Delay(step.WaitAfterMs, cancellationToken);
+        }
+    }
+}
+
+public sealed class RuntimeController(SequenceRunner runner, IKeySender sender)
+{
+    private CancellationTokenSource? _runCancellation;
+    public RuntimeState State { get; private set; } = RuntimeState.Stopped;
+    public event Action<RuntimeState>? StateChanged;
+    public string LastMessage { get; private set; } = "未启动";
+
+    public void Arm() => SetState(RuntimeState.Armed, "已就绪，等待触发");
+    public void Pause() => SetState(RuntimeState.Paused, "已暂停");
+
+    public async Task TriggerAsync(KeyProfile profile)
+    {
+        if (State != RuntimeState.Armed || !profile.Enabled || _runCancellation is not null) return;
+        _runCancellation = new CancellationTokenSource();
+        SetState(RuntimeState.Running, $"正在执行 {profile.Name}");
+        try
+        {
+            await runner.RunAsync(profile, _runCancellation.Token);
+            SetState(RuntimeState.Armed, "序列完成");
+        }
+        catch (OperationCanceledException) { SetState(RuntimeState.Stopped, "已紧急停止"); }
+        finally { _runCancellation.Dispose(); _runCancellation = null; sender.ReleaseAll(); }
+    }
+
+    public void Stop(string message = "已停止")
+    {
+        _runCancellation?.Cancel();
+        sender.ReleaseAll();
+        SetState(RuntimeState.Stopped, message);
+    }
+
+    private void SetState(RuntimeState state, string message)
+    {
+        State = state;
+        LastMessage = message;
+        StateChanged?.Invoke(state);
+    }
+}
