@@ -2,13 +2,21 @@ namespace InputProbe.Core;
 
 public enum RuntimeState { Stopped, Armed, Running, Paused }
 
-public sealed record KeyStep(string Key, int HoldMs = 30, int WaitAfterMs = 80);
+public sealed class KeyStep
+{
+    public KeyStep() { }
+    public KeyStep(string key, int holdMs = 30, int waitAfterMs = 80) => (Key, HoldMs, WaitAfterMs) = (key, holdMs, waitAfterMs);
+    public string Key { get; set; } = "D1";
+    public int HoldMs { get; set; } = 30;
+    public int WaitAfterMs { get; set; } = 80;
+}
 
 public sealed class KeyProfile
 {
     public string Name { get; set; } = "新建配置";
     public string TargetProcess { get; set; } = "";
-    public string Trigger { get; set; } = "F8";
+    public string StartHotkey { get; set; } = "F8";
+    public string StopHotkey { get; set; } = "F12";
     public List<KeyStep> Steps { get; set; } = [];
     public bool Enabled { get; set; }
 }
@@ -33,12 +41,12 @@ public interface IForegroundWindowGuard
 
 public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard guard)
 {
-    public async Task RunAsync(KeyProfile profile, CancellationToken cancellationToken)
+    public async Task<bool> RunAsync(KeyProfile profile, CancellationToken cancellationToken)
     {
         foreach (var step in profile.Steps)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!guard.IsTargetForeground(profile.TargetProcess)) return;
+            if (!guard.IsTargetForeground(profile.TargetProcess)) return false;
             sender.KeyDown(step.Key);
             try
             {
@@ -50,6 +58,7 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard gua
             }
             await Task.Delay(step.WaitAfterMs, cancellationToken);
         }
+        return true;
     }
 }
 
@@ -70,8 +79,9 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender)
         SetState(RuntimeState.Running, $"正在执行 {profile.Name}");
         try
         {
-            await runner.RunAsync(profile, _runCancellation.Token);
-            SetState(RuntimeState.Armed, "序列完成");
+            var completed = await runner.RunAsync(profile, _runCancellation.Token);
+            SetState(completed ? RuntimeState.Armed : RuntimeState.Stopped,
+                completed ? "序列完成" : "目标窗口已失焦，已停止");
         }
         catch (OperationCanceledException) { SetState(RuntimeState.Stopped, "已紧急停止"); }
         finally { _runCancellation.Dispose(); _runCancellation = null; sender.ReleaseAll(); }

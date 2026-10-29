@@ -27,10 +27,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private KeyProfile _selectedProfile;
     private string _stateText = "Stopped";
     private string _lastMessage = "未启动";
+    private KeyStep? _selectedStep;
     private readonly LowLevelKeyboardHook _keyboardHook;
 
     public List<KeyProfile> Profiles { get; } = [new KeyProfile { Name = "基础序列", TargetProcess = "jx3client", Steps = [new("D1"), new("D2")] }];
     public KeyProfile SelectedProfile { get => _selectedProfile; set { _selectedProfile = value; OnPropertyChanged(); } }
+    public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
@@ -38,6 +40,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand PauseCommand { get; }
     public ICommand StopCommand { get; }
     public ICommand TriggerCommand { get; }
+    public ICommand AddStepCommand { get; }
+    public ICommand RemoveStepCommand { get; }
+    public ICommand MoveStepUpCommand { get; }
+    public ICommand MoveStepDownCommand { get; }
 
     public MainViewModel()
     {
@@ -56,6 +62,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         PauseCommand = new RelayCommand(_ => _runtime.Pause());
         StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"));
         TriggerCommand = new RelayCommand(async _ => await _runtime.TriggerAsync(SelectedProfile));
+        AddStepCommand = new RelayCommand(_ => AddStep());
+        RemoveStepCommand = new RelayCommand(_ => RemoveStep());
+        MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1));
+        MoveStepDownCommand = new RelayCommand(_ => MoveStep(1));
     }
 
     private async Task SaveAsync()
@@ -66,7 +76,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnGlobalKeyChanged(int virtualKey, bool isDown)
     {
-        if (!isDown || !SelectedProfile.Enabled || _runtime.State != RuntimeState.Armed) return;
+        if (!isDown) return;
         var key = virtualKey switch
         {
             >= 0x70 and <= 0x7B => $"F{virtualKey - 0x6F}",
@@ -76,8 +86,40 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             0x1B => "Escape",
             _ => string.Empty
         };
-        if (string.Equals(key, SelectedProfile.Trigger, StringComparison.OrdinalIgnoreCase))
-            _ = _runtime.TriggerAsync(SelectedProfile);
+        if (string.Equals(key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))
+        {
+            _runtime.Stop("按下结束按键");
+            return;
+        }
+        if (SelectedProfile.Enabled && string.Equals(key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase))
+        {
+            if (_runtime.State == RuntimeState.Stopped) _runtime.Arm();
+            if (_runtime.State == RuntimeState.Armed) _ = _runtime.TriggerAsync(SelectedProfile);
+        }
+    }
+
+    private void AddStep()
+    {
+        SelectedProfile.Steps = [.. SelectedProfile.Steps, new KeyStep("D1")];
+        OnPropertyChanged(nameof(SelectedProfile));
+    }
+
+    private void RemoveStep()
+    {
+        if (SelectedStep is null) return;
+        SelectedProfile.Steps = SelectedProfile.Steps.Where(step => !ReferenceEquals(step, SelectedStep)).ToList();
+        SelectedStep = null;
+        OnPropertyChanged(nameof(SelectedProfile));
+    }
+
+    private void MoveStep(int offset)
+    {
+        if (SelectedStep is null) return;
+        var index = SelectedProfile.Steps.IndexOf(SelectedStep);
+        var target = index + offset;
+        if (index < 0 || target < 0 || target >= SelectedProfile.Steps.Count) return;
+        (SelectedProfile.Steps[index], SelectedProfile.Steps[target]) = (SelectedProfile.Steps[target], SelectedProfile.Steps[index]);
+        OnPropertyChanged(nameof(SelectedProfile));
     }
 
     public void Dispose()
