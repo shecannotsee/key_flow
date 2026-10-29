@@ -1,13 +1,15 @@
 # 剑网三按键工具技术方案（初版）
 
+> 当前实现审计与验证记录见 [AUDIT_REPORT.md](AUDIT_REPORT.md)。当前版本使用 Click 语义和持续循环，配置版本为 1，输入接口包含 `KeyDown`、`KeyUp`、`Press`、`ReleaseAll`、`Shutdown`。
+
 ## 1. 目标与边界
 
 初版做一个 Windows 桌面按键工具，支持：
 
 - 将一个物理按键映射为另一个按键或组合键。
 - 配置有限长度的固定按键序列，例如 `1 -> 2 -> 3`。
-- 每个 profile 配置独立的开始按键和结束按键；开始按键启动一次序列，结束按键立即取消并释放按键。
-- 序列中的每个步骤可编辑按键、按下持续时间和步骤间隔，并支持调整顺序。
+- 每个 profile 配置独立的开始按键和结束按键；开始按键启动持续序列，结束按键立即取消并释放按键。
+- 序列中的每个步骤使用 Click 语义并配置步骤间隔，支持调整顺序。
 - 启动后的行为固定为持续循环完整序列；只配置步骤之间的间隔，结束键负责取消循环。
 - 目标窗口限制属于后续可选能力，当前验证阶段不要求选择目标进程。
 - 目标窗口限制在当前验证阶段可关闭，便于先确认全局 Hook 和 `SendInput` 链路。
@@ -43,8 +45,11 @@ InputProbe/
 ```csharp
 public interface IKeySender
 {
-    void KeyDown(Keys key);
-    void KeyUp(Keys key);
+    void KeyDown(string key);
+    void KeyUp(string key);
+    void Press(string key);
+    void ReleaseAll();
+    void Shutdown();
 }
 
 public interface IForegroundWindowGuard
@@ -74,11 +79,12 @@ public interface IForegroundWindowGuard
   "profiles": [
     {
       "name": "基础序列",
-      "targetProcess": "jx3client",
-      "trigger": "F8",
+      "targetProcess": "",
+      "startHotkey": "F8",
+      "stopHotkey": "F12",
       "steps": [
-        { "key": "D1", "holdMs": 30, "waitAfterMs": 80 },
-        { "key": "D2", "holdMs": 30, "waitAfterMs": 100 }
+        { "key": "D1", "waitAfterMs": 80 },
+        { "key": "D2", "waitAfterMs": 100 }
       ],
       "enabled": false
     }

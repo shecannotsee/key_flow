@@ -7,17 +7,34 @@ namespace InputProbe.Windows;
 public sealed class SendInputKeySender : IKeySender
 {
     private readonly HashSet<string> _pressed = new(StringComparer.OrdinalIgnoreCase);
+    private bool _shutdown;
     public string LastStatus { get; private set; } = "尚未发送";
     public void KeyDown(string key) => Send(key, false);
     public void KeyUp(string key) => Send(key, true);
     public void ReleaseAll() { foreach (var key in _pressed.ToArray()) KeyUp(key); }
+    public void Shutdown()
+    {
+        ReleaseAll();
+        _shutdown = true;
+        LastStatus = "输入后端已关闭";
+    }
 
     private void Send(string key, bool up)
     {
-        if (!KeyMap.TryGetValue(key, out var vk)) { LastStatus = $"未映射按键: {key}"; return; }
+        if (_shutdown) throw new InvalidOperationException("输入后端已关闭");
+        if (!KeyMap.TryGetValue(key, out var vk))
+        {
+            LastStatus = $"未映射按键: {key}";
+            throw new ArgumentException(LastStatus, nameof(key));
+        }
         var flags = up ? 0x0002u : 0u;
         var input = new INPUT { type = 1, U = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, wScan = 0, dwFlags = flags } } };
-        if (SendInput(1, [input], Marshal.SizeOf<INPUT>()) == 0) { LastStatus = $"SendInput 失败: {Marshal.GetLastWin32Error()}"; return; }
+        if (SendInput(1, [input], Marshal.SizeOf<INPUT>()) == 0)
+        {
+            var error = Marshal.GetLastWin32Error();
+            LastStatus = $"SendInput 失败: {error}";
+            throw new System.ComponentModel.Win32Exception(error, LastStatus);
+        }
         LastStatus = $"已发送 {key} {(up ? "Up" : "Down")}";
         if (up) _pressed.Remove(key); else _pressed.Add(key);
     }

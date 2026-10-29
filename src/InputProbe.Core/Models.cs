@@ -37,6 +37,7 @@ public sealed class KeyProfile : INotifyPropertyChanged
 
 public sealed class AppConfig
 {
+    public int Version { get; set; } = 1;
     public List<KeyProfile> Profiles { get; set; } = [];
     public string PanicHotkey { get; set; } = "Ctrl+Shift+F12";
 }
@@ -45,7 +46,9 @@ public interface IKeySender
 {
     void KeyDown(string key);
     void KeyUp(string key);
+    void Press(string key) { KeyDown(key); KeyUp(key); }
     void ReleaseAll();
+    void Shutdown() { ReleaseAll(); }
 }
 
 public interface IInputLogger
@@ -69,16 +72,28 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? gu
 {
     public async Task<bool> RunAsync(KeyProfile profile, CancellationToken cancellationToken)
     {
+        Validate(profile);
         while (true)
         {
             foreach (var step in profile.Steps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
-                sender.KeyDown(step.Key);
-                sender.KeyUp(step.Key);
+                sender.Press(step.Key);
                 await Task.Delay(step.WaitAfterMs, cancellationToken);
             }
+        }
+    }
+
+    private static void Validate(KeyProfile profile)
+    {
+        if (profile.Steps is null || profile.Steps.Count == 0)
+            throw new ArgumentException("序列至少需要一个按键步骤", nameof(profile));
+        foreach (var step in profile.Steps)
+        {
+            if (string.IsNullOrWhiteSpace(step.Key)) throw new ArgumentException("按键不能为空", nameof(profile));
+            if (step.WaitAfterMs is < 0 or > 3_600_000)
+                throw new ArgumentOutOfRangeException(nameof(profile), "步骤间隔必须在 0 到 3600000 毫秒之间");
         }
     }
 }
@@ -128,6 +143,13 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
         sender.ReleaseAll();
         _logger.Info(message);
         SetState(RuntimeState.Stopped, message);
+    }
+
+    public void Shutdown()
+    {
+        _runCancellation?.Cancel();
+        sender.Shutdown();
+        _logger.Info("输入运行时已关闭");
     }
 
     private void SetState(RuntimeState state, string message)

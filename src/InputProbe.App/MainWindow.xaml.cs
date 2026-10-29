@@ -38,6 +38,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
     private readonly LowLevelKeyboardHook _keyboardHook;
+    private readonly HashSet<int> _panicKeys = [];
+    private string? _configLoadMessage;
 
     public List<KeyProfile> Profiles { get; private set; }
     public KeyProfile SelectedProfile { get => _selectedProfile; set { _selectedProfile = value; OnPropertyChanged(); } }
@@ -61,7 +63,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public MainViewModel()
     {
-        var loaded = _store.LoadAsync().GetAwaiter().GetResult();
+        AppConfig loaded;
+        try
+        {
+            loaded = _store.LoadAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }] };
+            _configLoadMessage = $"配置加载失败，已使用默认配置：{exception.Message}";
+        }
         Profiles = loaded.Profiles.Count > 0
             ? loaded.Profiles
             : [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }];
@@ -76,6 +87,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         });
         _keyboardHook = new LowLevelKeyboardHook();
         _keyboardHook.KeyChanged += OnGlobalKeyChanged;
+        if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
         SaveCommand = new RelayCommand(async _ => await SaveAsync());
         ArmCommand = new RelayCommand(async _ =>
         {
@@ -97,15 +109,31 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task SaveAsync()
     {
-        await _store.SaveAsync(new AppConfig { Profiles = Profiles });
+        await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles });
         LastMessage = "配置已保存";
     }
 
     private void OnGlobalKeyChanged(int virtualKey, bool isDown)
     {
-        if (!isDown) return;
+        if (!isDown)
+        {
+            _panicKeys.Remove(virtualKey);
+            return;
+        }
+        _panicKeys.Add(virtualKey);
+        if (IsPanicCombination())
+        {
+            _runtime.Stop("触发全局停止快捷键");
+            _panicKeys.Clear();
+            return;
+        }
         HandleKeyCode(virtualKey);
     }
+
+    private bool IsPanicCombination()
+        => _panicKeys.Contains(0x7B)
+            && _panicKeys.Any(key => key is 0x11 or 0xA2 or 0xA3)
+            && _panicKeys.Any(key => key is 0x10 or 0xA0 or 0xA1);
 
     public void HandleKeyCode(int virtualKey)
     {
@@ -190,6 +218,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         _runtime.Stop("程序退出");
+        _runtime.Shutdown();
         _keyboardHook.Dispose();
     }
 

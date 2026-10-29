@@ -55,6 +55,33 @@ public sealed class RuntimeTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public async Task ConfigRejectsUnknownVersionAndInvalidSteps()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"input-probe-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new JsonConfigStore(path);
+            await Assert.ThrowsAsync<InvalidDataException>(() => store.SaveAsync(new AppConfig
+            {
+                Version = 99,
+                Profiles = [new KeyProfile { Name = "测试", Steps = [new("A")] }]
+            }));
+            await Assert.ThrowsAsync<InvalidDataException>(() => store.SaveAsync(new AppConfig
+            {
+                Profiles = [new KeyProfile { Name = "测试", Steps = [new("", -1)] }]
+            }));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task EmptySequenceIsRejectedBeforeRunning()
+    {
+        var runner = new SequenceRunner(new RecordingSender());
+        await Assert.ThrowsAsync<ArgumentException>(() => runner.RunAsync(new KeyProfile(), CancellationToken.None));
+    }
+
     private sealed class RecordingSender(Action? onClick = null) : IKeySender
     {
         public List<string> Clicks { get; } = [];
