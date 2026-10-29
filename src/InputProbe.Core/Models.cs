@@ -25,12 +25,16 @@ public sealed class KeyProfile : INotifyPropertyChanged
     private string _stopHotkey = "F12";
     private List<KeyStep> _steps = [];
     private bool _enabled;
+    private bool _loopEnabled;
+    private int _loopIntervalMs = 500;
     public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
     public string TargetProcess { get => _targetProcess; set { _targetProcess = value; OnPropertyChanged(); } }
     public string StartHotkey { get => _startHotkey; set { _startHotkey = value; OnPropertyChanged(); } }
     public string StopHotkey { get => _stopHotkey; set { _stopHotkey = value; OnPropertyChanged(); } }
     public List<KeyStep> Steps { get => _steps; set { _steps = value; OnPropertyChanged(); } }
     public bool Enabled { get => _enabled; set { _enabled = value; OnPropertyChanged(); } }
+    public bool LoopEnabled { get => _loopEnabled; set { _loopEnabled = value; OnPropertyChanged(); } }
+    public int LoopIntervalMs { get => _loopIntervalMs; set { _loopIntervalMs = Math.Max(0, value); OnPropertyChanged(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
@@ -57,14 +61,19 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? gu
 {
     public async Task<bool> RunAsync(KeyProfile profile, CancellationToken cancellationToken)
     {
-        foreach (var step in profile.Steps)
+        do
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
-            sender.KeyDown(step.Key);
-            sender.KeyUp(step.Key);
-            await Task.Delay(step.WaitAfterMs, cancellationToken);
+            foreach (var step in profile.Steps)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
+                sender.KeyDown(step.Key);
+                sender.KeyUp(step.Key);
+                await Task.Delay(step.WaitAfterMs, cancellationToken);
+            }
+            if (profile.LoopEnabled) await Task.Delay(profile.LoopIntervalMs, cancellationToken);
         }
+        while (profile.LoopEnabled);
         return true;
     }
 }
