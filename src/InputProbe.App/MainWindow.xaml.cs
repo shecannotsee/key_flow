@@ -39,7 +39,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private CaptureMode _captureMode;
     private readonly LowLevelKeyboardHook _keyboardHook;
 
-    public List<KeyProfile> Profiles { get; } = [new KeyProfile { Name = "基础序列", TargetProcess = "jx3client", Steps = [new("D1"), new("D2")] }];
+    public List<KeyProfile> Profiles { get; private set; }
     public KeyProfile SelectedProfile { get => _selectedProfile; set { _selectedProfile = value; OnPropertyChanged(); } }
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
@@ -61,9 +61,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public MainViewModel()
     {
+        var loaded = _store.LoadAsync().GetAwaiter().GetResult();
+        Profiles = loaded.Profiles.Count > 0
+            ? loaded.Profiles
+            : [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }];
         _selectedProfile = Profiles[0];
         var sender = new SendInputKeySender();
-        _runtime = new RuntimeController(new SequenceRunner(sender), sender);
+        _runtime = new RuntimeController(new SequenceRunner(sender), sender,
+            new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log")));
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
             StateText = state.ToString();

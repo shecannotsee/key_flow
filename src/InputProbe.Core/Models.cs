@@ -48,6 +48,18 @@ public interface IKeySender
     void ReleaseAll();
 }
 
+public interface IInputLogger
+{
+    void Info(string message);
+    void Error(string message, Exception exception);
+}
+
+public sealed class NullInputLogger : IInputLogger
+{
+    public void Info(string message) { }
+    public void Error(string message, Exception exception) { }
+}
+
 public interface IForegroundWindowGuard
 {
     bool IsTargetForeground(string targetProcess);
@@ -71,15 +83,21 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? gu
     }
 }
 
-public sealed class RuntimeController(SequenceRunner runner, IKeySender sender)
+public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, IInputLogger? logger = null)
 {
+    private readonly IInputLogger _logger = logger ?? new NullInputLogger();
     private CancellationTokenSource? _runCancellation;
     public RuntimeState State { get; private set; } = RuntimeState.Stopped;
     public event Action<RuntimeState>? StateChanged;
     public string LastMessage { get; private set; } = "未启动";
 
     public void Arm() => SetState(RuntimeState.Armed, "已就绪，等待触发");
-    public void Pause() => SetState(RuntimeState.Paused, "已暂停");
+    public void Pause()
+    {
+        _runCancellation?.Cancel();
+        sender.ReleaseAll();
+        SetState(RuntimeState.Paused, "已暂停");
+    }
 
     public async Task TriggerAsync(KeyProfile profile)
     {
@@ -92,7 +110,15 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender)
             SetState(completed ? RuntimeState.Armed : RuntimeState.Stopped,
                 completed ? "序列完成" : "目标窗口已失焦，已停止");
         }
-        catch (OperationCanceledException) { SetState(RuntimeState.Stopped, "已紧急停止"); }
+        catch (OperationCanceledException)
+        {
+            if (State != RuntimeState.Paused) SetState(RuntimeState.Stopped, "已停止");
+        }
+        catch (Exception exception)
+        {
+            _logger.Error("序列执行异常", exception);
+            SetState(RuntimeState.Stopped, "执行异常，已停止");
+        }
         finally { _runCancellation.Dispose(); _runCancellation = null; sender.ReleaseAll(); }
     }
 
@@ -100,6 +126,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender)
     {
         _runCancellation?.Cancel();
         sender.ReleaseAll();
+        _logger.Info(message);
         SetState(RuntimeState.Stopped, message);
     }
 

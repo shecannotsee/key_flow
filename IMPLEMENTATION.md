@@ -17,6 +17,8 @@
 - 循环：启动后固定持续循环执行完整序列，不再配置循环开关或每轮间隔；结束键、暂停和停止按钮负责取消循环。
 - 稳定性：`KeyProfile` 和 `KeyStep` 已实现属性通知，录入后会立即刷新界面；捕获同时支持全局 Hook 和窗口前台时的 WPF `PreviewKeyDown` 兜底。
 - 诊断：右侧显示全局 Hook 安装状态和 Win32 错误码，便于判断权限或系统拦截问题。
+- 核心验证：新增 xUnit 测试，覆盖循环顺序、取消/停止释放和 JSON 配置往返；当前 3 项全部通过。
+- 配置与日志：应用启动时加载 `config.json`，运行停止和异常写入 `input-probe.log`。
 - 设计：`APPLE_DESIGN_GUIDE.md` 与 `Themes/AppleTheme.xaml` 记录并实现颜色、间距、字体、圆角和状态反馈基线。
 - 根目录：`Start-InputProbe.cmd`，构建后可双击启动应用。
 - 文档：`TECH_PLAN.md` 记录技术路线、分层、游戏拦截处理和 UI 规划。
