@@ -15,10 +15,8 @@ public sealed class SendInputKeySender : IKeySender
     private void Send(string key, bool up)
     {
         if (!KeyMap.TryGetValue(key, out var vk)) { LastStatus = $"未映射按键: {key}"; return; }
-        var scan = MapVirtualKey(vk, 0);
-        var flags = 0x0008u | (up ? 0x0002u : 0u);
-        if (key is "Left" or "Up" or "Right" or "Down" or "Insert" or "Delete" or "Home" or "End" or "PageUp" or "PageDown") flags |= 0x0001u;
-        var input = new INPUT { type = 1, U = new INPUTUNION { ki = new KEYBDINPUT { wVk = 0, wScan = (ushort)scan, dwFlags = flags } } };
+        var flags = up ? 0x0002u : 0u;
+        var input = new INPUT { type = 1, U = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, wScan = 0, dwFlags = flags } } };
         if (SendInput(1, [input], Marshal.SizeOf<INPUT>()) == 0) { LastStatus = $"SendInput 失败: {Marshal.GetLastWin32Error()}"; return; }
         LastStatus = $"已发送 {key} {(up ? "Up" : "Down")}";
         if (up) _pressed.Remove(key); else _pressed.Add(key);
@@ -32,7 +30,6 @@ public sealed class SendInputKeySender : IKeySender
         .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
 
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-    [DllImport("user32.dll")] private static extern uint MapVirtualKey(ushort code, uint mapType);
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { public uint type; public INPUTUNION U; }
     // INPUT's union is sized by MOUSEINPUT on x64 (32 bytes), even when sending keyboard events.
     [StructLayout(LayoutKind.Explicit, Size = 32)] private struct INPUTUNION { [FieldOffset(0)] public KEYBDINPUT ki; }
