@@ -74,7 +74,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         MoveStepDownCommand = new RelayCommand(_ => MoveStep(1));
         CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start));
         CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop));
-        CaptureSequenceCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Sequence));
+        CaptureSequenceCommand = new RelayCommand(_ => BeginSequenceCapture());
     }
 
     private async Task SaveAsync()
@@ -117,7 +117,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             case CaptureMode.Start: SelectedProfile.StartHotkey = key; break;
             case CaptureMode.Stop: SelectedProfile.StopHotkey = key; break;
-            case CaptureMode.Sequence: AddStep(key); break;
+            case CaptureMode.Sequence:
+                if (SelectedStep is not null) SelectedStep.Key = key;
+                break;
         }
         _captureMode = CaptureMode.None;
         OnPropertyChanged(nameof(SelectedProfile));
@@ -125,12 +127,22 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     private void AddStep()
-        => AddStep("D1");
+        => AddStep("");
 
     private void AddStep(string key)
     {
         SelectedProfile.Steps = [.. SelectedProfile.Steps, new KeyStep(key)];
         OnPropertyChanged(nameof(SelectedProfile));
+    }
+
+    private void BeginSequenceCapture()
+    {
+        if (SelectedStep is null)
+        {
+            AddStep();
+            SelectedStep = SelectedProfile.Steps[^1];
+        }
+        BeginCapture(CaptureMode.Sequence);
     }
 
     private void RemoveStep()
