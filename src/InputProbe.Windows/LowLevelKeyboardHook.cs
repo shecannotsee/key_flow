@@ -8,13 +8,16 @@ public sealed class LowLevelKeyboardHook : IDisposable
     private readonly HookProc _callback;
     private IntPtr _hook;
     public event Action<int, bool>? KeyChanged;
+    public bool IsInstalled => _hook != IntPtr.Zero;
+    public int InstallError { get; }
 
     public LowLevelKeyboardHook()
     {
         _callback = OnHook;
         using var process = Process.GetCurrentProcess();
         using var module = process.MainModule;
-        _hook = SetWindowsHookEx(13, _callback, GetModuleHandle(module?.ModuleName), 0);
+        _hook = SetWindowsHookEx(13, _callback, GetModuleHandle(null), 0);
+        InstallError = _hook == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
     }
 
     private IntPtr OnHook(int code, IntPtr wParam, IntPtr lParam)
@@ -37,7 +40,7 @@ public sealed class LowLevelKeyboardHook : IDisposable
 
     private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)] private struct KBDLLHOOKSTRUCT { public uint vkCode, scanCode, flags, time; public IntPtr dwExtraInfo; }
-    [DllImport("user32.dll")] private static extern IntPtr SetWindowsHookEx(int idHook, HookProc callback, IntPtr module, uint threadId);
+    [DllImport("user32.dll", SetLastError = true)] private static extern IntPtr SetWindowsHookEx(int idHook, HookProc callback, IntPtr module, uint threadId);
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
     [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? name);

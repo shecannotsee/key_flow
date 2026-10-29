@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using InputProbe.Core;
 using InputProbe.Windows;
 
@@ -16,6 +17,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
+        PreviewKeyDown += (_, args) =>
+        {
+            if (_viewModel.CaptureText.Length == 0) return;
+            _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key));
+            args.Handled = true;
+        };
         Closed += (_, _) => _viewModel.Dispose();
     }
 }
@@ -50,6 +57,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
+    public string HookText => _keyboardHook.IsInstalled ? "全局 Hook：已安装" : $"全局 Hook：失败（错误码 {_keyboardHook.InstallError}）";
 
     public MainViewModel()
     {
@@ -86,6 +94,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnGlobalKeyChanged(int virtualKey, bool isDown)
     {
         if (!isDown) return;
+        HandleKeyCode(virtualKey);
+    }
+
+    public void HandleKeyCode(int virtualKey)
+    {
         var key = VirtualKeyNames.FromVirtualKey(virtualKey);
         if (_captureMode != CaptureMode.None)
         {

@@ -1,23 +1,38 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace InputProbe.Core;
 
 public enum RuntimeState { Stopped, Armed, Running, Paused }
 
-public sealed class KeyStep
+public sealed class KeyStep : INotifyPropertyChanged
 {
     public KeyStep() { }
     public KeyStep(string key, int waitAfterMs = 80) => (Key, WaitAfterMs) = (key, waitAfterMs);
-    public string Key { get; set; } = "D1";
-    public int WaitAfterMs { get; set; } = 80;
+    private string _key = "D1";
+    private int _waitAfterMs = 80;
+    public string Key { get => _key; set { _key = value; OnPropertyChanged(); } }
+    public int WaitAfterMs { get => _waitAfterMs; set { _waitAfterMs = value; OnPropertyChanged(); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
 
-public sealed class KeyProfile
+public sealed class KeyProfile : INotifyPropertyChanged
 {
-    public string Name { get; set; } = "新建配置";
-    public string TargetProcess { get; set; } = "";
-    public string StartHotkey { get; set; } = "F8";
-    public string StopHotkey { get; set; } = "F12";
-    public List<KeyStep> Steps { get; set; } = [];
-    public bool Enabled { get; set; }
+    private string _name = "新建配置";
+    private string _targetProcess = "";
+    private string _startHotkey = "F8";
+    private string _stopHotkey = "F12";
+    private List<KeyStep> _steps = [];
+    private bool _enabled;
+    public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
+    public string TargetProcess { get => _targetProcess; set { _targetProcess = value; OnPropertyChanged(); } }
+    public string StartHotkey { get => _startHotkey; set { _startHotkey = value; OnPropertyChanged(); } }
+    public string StopHotkey { get => _stopHotkey; set { _stopHotkey = value; OnPropertyChanged(); } }
+    public List<KeyStep> Steps { get => _steps; set { _steps = value; OnPropertyChanged(); } }
+    public bool Enabled { get => _enabled; set { _enabled = value; OnPropertyChanged(); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
 
 public sealed class AppConfig
