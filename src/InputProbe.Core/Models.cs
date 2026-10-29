@@ -5,9 +5,8 @@ public enum RuntimeState { Stopped, Armed, Running, Paused }
 public sealed class KeyStep
 {
     public KeyStep() { }
-    public KeyStep(string key, int holdMs = 0, int waitAfterMs = 80) => (Key, HoldMs, WaitAfterMs) = (key, holdMs, waitAfterMs);
+    public KeyStep(string key, int waitAfterMs = 80) => (Key, WaitAfterMs) = (key, waitAfterMs);
     public string Key { get; set; } = "D1";
-    public int HoldMs { get; set; } = 30;
     public int WaitAfterMs { get; set; } = 80;
 }
 
