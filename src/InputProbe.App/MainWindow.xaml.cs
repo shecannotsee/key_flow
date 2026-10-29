@@ -72,7 +72,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _keyboardHook = new LowLevelKeyboardHook();
         _keyboardHook.KeyChanged += OnGlobalKeyChanged;
         SaveCommand = new RelayCommand(async _ => await SaveAsync());
-        ArmCommand = new RelayCommand(_ => { SelectedProfile.Enabled = true; _runtime.Arm(); });
+        ArmCommand = new RelayCommand(async _ =>
+        {
+            SelectedProfile.Enabled = true;
+            _runtime.Arm();
+            await _runtime.TriggerAsync(SelectedProfile);
+        });
         PauseCommand = new RelayCommand(_ => _runtime.Pause());
         StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"));
         TriggerCommand = new RelayCommand(async _ => await _runtime.TriggerAsync(SelectedProfile));
