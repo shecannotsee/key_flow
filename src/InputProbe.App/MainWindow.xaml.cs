@@ -78,7 +78,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             : [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }];
         _selectedProfile = Profiles[0];
         var logger = new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log"));
-        var sender = new SendInputKeySender(logger);
+        // Scan-code mode is closer to physical keyboard event semantics. The
+        // VirtualKey mode remains available for comparison and diagnostics.
+        var sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
         _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {

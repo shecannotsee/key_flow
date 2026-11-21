@@ -21,6 +21,7 @@ WPF 控件/全局 WH_KEYBOARD_LL
 ## 2. 实际输入后端与关键文件
 
 - `src/InputProbe.Windows/WindowsInput.cs`：唯一实际发送后端，使用 `SendInput`，追踪已按下键并在 `ReleaseAll` 中释放。
+- 当前后端支持两种发送格式：`VirtualKey`（`wVk`）和 `ScanCode`（`KEYEVENTF_SCANCODE`）；应用默认使用扫描码模式，便于和不同客户端的键盘读取方式进行对比。
 - `src/InputProbe.Windows/LowLevelKeyboardHook.cs`：全局低级键盘 hook，仅用于观察/录入，不发送输入。
 - 未发现 `keybd_event`、Windows 消息发送、第三方键盘模拟库或 DLL 注入。
 - `src/InputProbe.Core/Models.cs`：`IKeySender`、调度器、运行状态和配置模型。
