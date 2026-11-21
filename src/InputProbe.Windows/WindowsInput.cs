@@ -19,6 +19,16 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
     public string LastStatus { get; private set; } = "尚未发送";
     public void KeyDown(string key) => Send(key, false);
     public void KeyUp(string key) => Send(key, true);
+    public void Press(string key)
+    {
+        EnsureReady();
+        var vk = ResolveKey(key);
+        var inputs = new[] { CreateInput(vk, false), CreateInput(vk, true) };
+        SendInputs(inputs, key, "Click", sent => { if (sent > 0) _pressed.Add(key); });
+        _pressed.Remove(key);
+        LastStatus = $"已发送 {key} Click ({_mode})";
+        _logger.Info(LastStatus);
+    }
     public void ReleaseAll() { foreach (var key in _pressed.ToArray()) KeyUp(key); }
     public void Shutdown()
     {
@@ -30,23 +40,37 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
 
     private void Send(string key, bool up)
     {
-        if (_shutdown)
-        {
-            var exception = new InvalidOperationException("输入后端已关闭");
-            _logger.Error("输入发送被拒绝", exception);
-            throw exception;
-        }
-        if (!KeyMap.TryGetValue(key, out var vk))
-        {
-            LastStatus = $"未映射按键: {key}";
-            var exception = new ArgumentException(LastStatus, nameof(key));
-            _logger.Error(LastStatus, exception);
-            throw exception;
-        }
+        EnsureReady();
+        var vk = ResolveKey(key);
+        SendInputs([CreateInput(vk, up)], key, up ? "Up" : "Down");
+        LastStatus = $"已发送 {key} {(up ? "Up" : "Down")} ({_mode})";
+        _logger.Info(LastStatus);
+        if (up) _pressed.Remove(key); else _pressed.Add(key);
+    }
+
+    private void EnsureReady()
+    {
+        if (!_shutdown) return;
+        var exception = new InvalidOperationException("输入后端已关闭");
+        _logger.Error("输入发送被拒绝", exception);
+        throw exception;
+    }
+
+    private ushort ResolveKey(string key)
+    {
+        if (KeyMap.TryGetValue(key, out var vk)) return vk;
+        LastStatus = $"未映射按键: {key}";
+        var exception = new ArgumentException(LastStatus, nameof(key));
+        _logger.Error(LastStatus, exception);
+        throw exception;
+    }
+
+    private INPUT CreateInput(ushort vk, bool up)
+    {
         var scanCode = MapVirtualKey(vk, 4);
         if (_mode == SendInputMode.ScanCode && scanCode == 0)
         {
-            var exception = new InvalidOperationException($"无法映射扫描码: {key} (VK 0x{vk:X2})");
+            var exception = new InvalidOperationException($"无法映射扫描码 (VK 0x{vk:X2})");
             _logger.Error(exception.Message, exception);
             throw exception;
         }
@@ -58,30 +82,24 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
             if ((scanCode & 0xFF00) != 0) flags |= 0x0001u;
             inputScan = (ushort)(scanCode & 0x00FF);
         }
-        var input = new INPUT
+        return new INPUT { type = 1, U = new INPUTUNION { ki = new KEYBDINPUT
         {
-            type = 1,
-            U = new INPUTUNION
-            {
-                ki = new KEYBDINPUT
-                {
-                    wVk = _mode == SendInputMode.VirtualKey ? vk : (ushort)0,
-                    wScan = inputScan,
-                    dwFlags = flags
-                }
-            }
-        };
-        if (SendInput(1, [input], Marshal.SizeOf<INPUT>()) == 0)
-        {
-            var error = Marshal.GetLastWin32Error();
-            LastStatus = $"SendInput 失败: {error}";
-            var exception = new System.ComponentModel.Win32Exception(error, LastStatus);
-            _logger.Error(LastStatus, exception);
-            throw exception;
-        }
-        LastStatus = $"已发送 {key} {(up ? "Up" : "Down")} ({_mode})";
-        _logger.Info(LastStatus);
-        if (up) _pressed.Remove(key); else _pressed.Add(key);
+            wVk = _mode == SendInputMode.VirtualKey ? vk : (ushort)0,
+            wScan = inputScan,
+            dwFlags = flags
+        } } };
+    }
+
+    private void SendInputs(INPUT[] inputs, string key, string action, Action<uint>? onPartial = null)
+    {
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        if (sent == inputs.Length) return;
+        onPartial?.Invoke(sent);
+        var error = Marshal.GetLastWin32Error();
+        LastStatus = $"SendInput 失败: {error}";
+        var exception = new System.ComponentModel.Win32Exception(error, LastStatus);
+        _logger.Error($"{LastStatus} ({key} {action})", exception);
+        throw exception;
     }
 
     private static readonly Dictionary<string, ushort> KeyMap = Enumerable.Range(0, 10)
