@@ -10,7 +10,7 @@ public sealed class JsonConfigStore(string path)
     {
         if (!File.Exists(path)) return CreateDefault();
         await using var stream = File.OpenRead(path);
-        var config = await JsonSerializer.DeserializeAsync<AppConfig>(stream, Options) ?? CreateDefault();
+        var config = await JsonSerializer.DeserializeAsync<AppConfig>(stream, Options).ConfigureAwait(false) ?? CreateDefault();
         Validate(config);
         return config;
     }
@@ -20,7 +20,7 @@ public sealed class JsonConfigStore(string path)
         Validate(config);
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         await using var stream = File.Create(path);
-        await JsonSerializer.SerializeAsync(stream, config, Options);
+        await JsonSerializer.SerializeAsync(stream, config, Options).ConfigureAwait(false);
     }
 
     private static AppConfig CreateDefault() => new()
