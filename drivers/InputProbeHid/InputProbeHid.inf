@@ -1,0 +1,56 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+CatalogFile=InputProbeHid.cat
+DriverVer=01/01/2025,0.1.0.0
+PnpLockdown=1
+
+[Manufacturer]
+%Provider%=Models,NTamd64.10.0...22621
+
+[Models.NTamd64.10.0...22621]
+%DeviceName%=Install,Root\InputProbeHid
+
+[Install.NT]
+CopyFiles=DriverCopy
+
+[DriverCopy]
+InputProbeHid.sys
+
+[DestinationDirs]
+DriverCopy=13
+
+[SourceDisksNames]
+1=%DiskName%,,,
+
+[SourceDisksFiles]
+InputProbeHid.sys=1
+
+[Install.NT.HW]
+AddReg=VhfFilter
+
+[VhfFilter]
+HKR,,LowerFilters,0x00010000,"vhf"
+
+[Install.NT.Services]
+AddService=InputProbeHid,0x00000002,Service
+
+[Service]
+DisplayName=%DeviceName%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%13%\InputProbeHid.sys
+
+[Install.NT.Wdf]
+KmdfService=InputProbeHid,WdfSection
+
+[WdfSection]
+KmdfLibraryVersion=1.33
+
+[Strings]
+Provider="Input Probe Project"
+DeviceName="Input Probe Virtual HID Source (Development)"
+DiskName="Input Probe Driver Package"

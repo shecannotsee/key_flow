@@ -19,3 +19,9 @@
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/install-the-wdk-using-nuget
 - https://api.nuget.org/v3/index.json
+
+
+## 后续包构建
+
+`Build-Package.ps1` 在编译基础上调用内核链接器、InfVerif 和 dumpbin；每次重建删除过期 CAT，避免新二进制搭配旧目录。
+`Sign-Development.ps1` 使用本机 SDK 的 MakeCat/SignTool 为原型生成开发签名，具体信任失败与边界见 drivers/InputProbeHid/README.md。本轮已实际生成 .sys/.inf/.cat，尚未安装或加载。
