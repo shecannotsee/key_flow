@@ -18,7 +18,8 @@ public partial class MainWindow : Window
         try { _viewModel = new MainViewModel(); }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or IOException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
-            MessageBox.Show($"无法启用所选输入后端：{exception.Message}", "Input Probe", MessageBoxButton.OK, MessageBoxImage.Error);
+            new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log")).Error("窗口启动失败", exception);
+            MessageBox.Show("暂时无法打开程序，请使用目录中的启动入口重试。问题详情已记录。", "Input Probe", MessageBoxButton.OK, MessageBoxImage.Error);
             Application.Current.Shutdown(1);
             return;
         }
@@ -61,7 +62,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly JsonConfigStore _store = new(Path.Combine(AppContext.BaseDirectory, "config.json"));
     private readonly RuntimeController _runtime;
     private KeyProfile _selectedProfile;
-    private string _stateText = "未初始化";
+    private string _stateText = "尚未准备";
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
@@ -155,7 +156,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             StateText = state == RuntimeState.Running ? "运行中" : "已停止";
             OnPropertyChanged(nameof(CanEdit));
             CommandManager.InvalidateRequerySuggested();
-            LastMessage = _runtime.LastMessage;
+            LastMessage = _runtime.LastMessage.StartsWith("执行失败：", StringComparison.Ordinal)
+                ? "执行失败，已停止。请检查配置后重试，问题详情已记录" : _runtime.LastMessage;
         });
         _logger.Info("启动：快捷键使用独立线程 MouseKeyHook / RegisterHotKey / Raw Input / 状态轮询，录入使用 WPF 窗口事件");
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
@@ -231,7 +233,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_systemHotkeys is null || _disposed) return;
         _systemHotkeys.Clear();
-        if (!IsInitialized) { HotkeyStatus = "请先初始化 DD，快捷键尚未启用"; return; }
+        if (!IsInitialized) { HotkeyStatus = "请先点击“准备使用”，快捷键尚未启用"; return; }
         _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
         _stopRegistered = RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
         var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.

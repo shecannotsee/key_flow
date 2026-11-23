@@ -12,7 +12,7 @@ public sealed partial class MainViewModel
     private DeferredDdKeyboard _keyboard = null!;
     private bool _initializationAttempted, _profileBusy;
     public bool IsInitialized { get; private set; }
-    public string InitializationText { get; private set; } = "初始化 DD";
+    public string InitializationText { get; private set; } = "准备使用";
     public ICommand InitializeCommand { get; private set; } = null!;
     public ICommand DuplicateProfileCommand { get; private set; } = null!;
     public ICommand ImportCommand { get; private set; } = null!;
@@ -30,27 +30,27 @@ public sealed partial class MainViewModel
         }, _ => CanEdit && _validationErrors == 0);
         ImportCommand = new RelayCommand(async _ => await TransferProfileAsync(true), _ => CanEdit && _validationErrors == 0);
         ExportCommand = new RelayCommand(async _ => await TransferProfileAsync(false), _ => CanEdit && _validationErrors == 0);
-        LastMessage = "点击初始化后解锁功能；初始化可能触发 Win 菜单或鼠标移动";
+        LastMessage = "点击“准备使用”后解锁功能；准备期间可能出现菜单弹出或鼠标短暂移动";
     }
 
     private async Task InitializeAsync()
     {
         _initializationAttempted = true;
-        InitializationText = "正在初始化…"; StateText = "初始化中";
+        InitializationText = "正在准备…"; StateText = "准备中";
         OnPropertyChanged(nameof(InitializationText)); CommandManager.InvalidateRequerySuggested();
         try
         {
             await Task.Run(_keyboard.Initialize);
             if (_disposed) return;
-            IsInitialized = true; InitializationText = "DD 已就绪"; StateText = "已停止";
-            LastMessage = "初始化成功，可以编辑配置或开始执行";
+            IsInitialized = true; InitializationText = "已就绪"; StateText = "已停止";
+            LastMessage = "准备完成，可以编辑配置或开始执行";
             ConfigureHotkeys();
         }
         catch (Exception e)
         {
             _logger.Error("手动初始化失败", e);
             if (_disposed) return;
-            InitializationText = "初始化失败，请重启"; StateText = "初始化失败"; LastMessage = e.Message;
+            InitializationText = "准备失败，请重启"; StateText = "准备失败"; LastMessage = "暂时无法使用，请关闭程序后重新打开。问题详情已记录";
         }
         finally
         {
