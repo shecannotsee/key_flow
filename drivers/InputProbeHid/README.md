@@ -4,10 +4,10 @@
 
 Driver.c 实现 VhfCreate/VhfStart/VhfReadReportSubmit、管理员及 SYSTEM 访问控制、独占客户端、8 字节输入长度校验，以及客户端句柄清理时全键释放。设备删除时销毁 VHF 对象。不安装 Hook，不修改游戏进程，不使用第三方键盘身份。
 
-开发机检查：存在 Windows SDK include 10.0.26100.0；未检测到 WDK build 目录或可用 MSBuild/cl。当前没有可安装 SYS、INF 或签名目录，不能使用本文件声称设备已实现运行。
+开发环境已更新：确认已有 VS 2022 Build Tools 17.14、MSVC 14.44；项目本地恢复微软官方 WDK/SDK NuGet 10.0.26100.6584。Driver.c 已通过真实 x64 内核编译，输出 .artifacts/driver-build/Driver.obj。当前没有可安装 SYS、INF 或签名目录，设备尚未运行。
 
 后续必须完成：
-1. 安装匹配的 Visual Studio C++ 工具链和 WDK，建立 KMDF 驱动项目。
+1. 编译依赖已就绪，下一步建立完整 KMDF 驱动链接及打包项目。
 2. 添加自有 Root 设备 INF、Vhf lower filter 配置及规范驱动签名。
 3. 在独立测试环境编译、静态分析、Driver Verifier 和真实键盘接收测试。
 4. 补充挂起客户端超时释放、多线程卸载竞态和电源生命周期测试。
@@ -16,4 +16,8 @@ Driver.c 实现 VhfCreate/VhfStart/VhfReadReportSubmit、管理员及 SYSTEM 访
 通信协议草案：本机管理员打开 \\.\InputProbeHid，DeviceIoControl 使用 CTL_CODE(FILE_DEVICE_UNKNOWN,0x800,METHOD_BUFFERED,FILE_WRITE_ACCESS)，输入 8 字节 [modifier,reserved,key1..key6]，全零释放全部按键；HID usage 与 Windows VK 不同，必须显式映射。
 
 官方参考：https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/virtual-hid-framework--vhf-
-本轮仅核查官方接口及写入源码；没有运行驱动编译或设备输入测试。现有 SendInput 路径与用户配置未改变。
+已执行 Driver.c 编译检查；未执行设备安装或输入测试。现有 SendInput 路径与用户配置未改变。
+
+重新恢复依赖并验证：
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/driver-env/Build-Check.ps1`
+已恢复依赖时可附加 `-SkipRestore`。

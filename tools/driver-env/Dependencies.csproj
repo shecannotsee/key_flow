@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.WDK.x64" Version="10.0.26100.6584" GeneratePathProperty="true" />
+    <PackageReference Include="Microsoft.Windows.SDK.CPP.x64" Version="10.0.26100.6584" GeneratePathProperty="true" />
+    <PackageReference Include="Microsoft.Windows.SDK.CPP" Version="10.0.26100.6584" GeneratePathProperty="true" />
+  </ItemGroup>
+</Project>
