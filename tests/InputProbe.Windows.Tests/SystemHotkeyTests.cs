@@ -6,19 +6,6 @@ using Xunit;
 public sealed class SystemHotkeyTests
 {
     [Fact]
-    public void SenderModeCanChangeWithoutSendingAndRejectsInvalidMode()
-    {
-        var sender = new SendInputKeySender();
-        sender.Mode = SendInputMode.VirtualKey;
-        Assert.Equal(SendInputMode.VirtualKey, sender.Mode);
-        sender.Mode = SendInputMode.ScanCode;
-        Assert.Equal(SendInputMode.ScanCode, sender.Mode);
-        Assert.Throws<ArgumentOutOfRangeException>(() => sender.Mode = (SendInputMode)42);
-        sender.Shutdown();
-        Assert.Throws<InvalidOperationException>(() => sender.Mode = SendInputMode.VirtualKey);
-    }
-
-    [Fact]
     public void RegistrationConflictAndDisposeReleaseAreObservable()
     {
         Exception? failure = null;

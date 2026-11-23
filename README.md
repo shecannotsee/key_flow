@@ -1,41 +1,39 @@
-# Input Probe
+# Input Probe · DD 按键
 
-## 最小输入测试
+以用户已验证成功的 DD 数字 8 命令行程序为基准。界面和命令行共用 PulseLoop 执行内核，只保留 DD HID 输入路线。
 
-双击 **Start-8.cmd**：启动独立 DD 命令行程序，5 秒后持续输入主键盘数字 8。
-每次按住 30ms，按下到下一次按下的目标间隔 80ms；Windows 调度可能使实际间隔更长，不补发突发事件。
-先关闭旧按键程序，倒计时内切换到目标窗口。Ctrl+C 或关闭命令行窗口停止。
-该入口不用 WPF、配置档案或全局开始热键，不自动切换到 SendInput。
+## 使用
 
-`Start-8.cmd --check` 只检查 DLL 初始化及数字 8 键码，不发送按键。
-已实测构建零警告、零错误，真实初始化及转换成功（DD=208）；尚未确认目标窗口收到输入。
-普通退出和控制台关闭会尝试释放按键；强制结束进程或驱动调用挂死时无法保证清理。
+- `Start-InputProbe.cmd`：界面版。点击“新建数字 8 · 80ms”使用成功参数；点击开始或开始热键后，5 秒内切到目标窗口。
+- `Start-8.cmd`：最小命令行版，5 秒后持续输入数字 8，Ctrl+C 或关闭窗口停止。
+- 不要同时运行两个入口，避免同时输入和设备占用。
 
-## 完整界面
+界面支持点击录入按键、编辑每步按住时长和间隔、增加/删除/排序、保存配置、持续循环及停止。默认开始 F8、停止 F9，紧急停止 Ctrl+Shift+F10。关闭界面也会取消执行并尝试释放按键。
 
-双击根目录唯一入口 **Start-InputProbe.cmd**，默认使用 DD HID 后端。
-关闭旧程序后再启动，避免热键和设备占用。配置和日志仍位于原 App 输出目录。
+新配置默认数字 8，按住 30ms，间隔 80ms。间隔指一次按下到下一步按下，不是松开后的等待。Windows 调度可能使实际间隔更长；不补发积压事件。间隔小于按住时长时，以按住时长为准。
 
-可选启动方式（终端）：
+## 配置
+
+`src/InputProbe.App/bin/Debug/net8.0-windows/config.json`，日志位于同目录 input-probe.log。打开旧配置不会覆盖原文件。v1 配置按住 50ms，旧间隔加 50ms 迁移为 v2 的总间隔，以保留原有节奏；点击新建数字 8 配置即可使用已验证参数。保存使用原子替换，并保留上一次文件为 config.json.bak。
+
+## 代码
+
+- `src/InputProbe.Core/`：配置、序列快照、共用 PulseLoop、后台调度和取消。
+- `src/InputProbe.Windows/`：DD DLL 适配、键码及日志诊断。
+- `src/InputProbe.App/`：WPF 编辑界面和系统热键。
+- `tools/Repeat8/`：命令行入口，调用同一 PulseLoop。
+- `tools/DdProbe/`：只初始化与转换键码，不发送输入。
+- `dependencies/dd/`：配套 hid.72000.dll，不提交厂商二进制。
+- `tests/`：当前 DD 路线和运行时的测试。
+
+已删除其他输入后端、自写驱动工程及开发脚本、无关测试和过期方案文档。历史实现可从 Git 查看。已恢复的 SDK 缓存留在本地 .artifacts，不参与当前项目构建。
+
+## 构建与验证
 
 ```powershell
-.\Start-InputProbe.cmd -Backend SendInput
-.\Start-InputProbe.cmd -Elevated
-.\Start-InputProbe.cmd -Backend SendInput -Elevated
+dotnet build InputProbe.sln
+dotnet test InputProbe.sln
+Start-8.cmd --check
 ```
 
-`-Elevated` 触发 Windows UAC。默认不要求提权。原 DD 和 Admin 快捷启动文件已合并到此入口。
-
-## 目录
-
-- `src/`：应用、调度与输入后端。
-- `tests/`：单元测试及独立 Windows 接收窗口。
-- `dependencies/dd/`：本地 DD 运行库，不提交厂商二进制。
-- `docs/`：设计、审计及历史验证记录；旧启动文件名仅供历史参考，以本 README 为准。
-- `tools/`：统一启动脚本、DD 探针、驱动开发工具。
-- `drivers/`：保留自有 VHF 原型源码。
-- `.artifacts/`：依赖缓存及研究记录。
-
-构建：`dotnet build InputProbe.sln`；测试：`dotnet test InputProbe.sln`。
-
-DD 驱动已在本机安装并通过初始化验证，真实输入接收与游戏兼容性尚未完成验证。详见 [DD 研究和实测记录](docs/DD_RESEARCH.md)。
+用户已反馈独立 DD 数字 8 程序在目标应用成功；共用内核后的界面版仍需用户复测。普通退出有释放保护，强制杀进程或驱动挂死不保证清理。

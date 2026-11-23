@@ -89,7 +89,7 @@ public sealed class RuntimeTests
         var sender = new TimedSender(cancellation);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             new SequenceRunner(sender).RunAsync(new KeyProfile { Steps = [new("A")] }, cancellation.Token));
-        Assert.True(sender.HeldMs >= 40, $"Hold was only {sender.HeldMs} ms");
+        Assert.True(sender.HeldMs >= 25, $"Hold was only {sender.HeldMs} ms");
         Assert.Equal(1, sender.UpCount);
     }
 

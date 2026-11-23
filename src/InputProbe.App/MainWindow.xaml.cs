@@ -47,9 +47,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
-    private readonly SendInputKeySender _sender;
-    private readonly HidDeviceKeySender? _deviceSender;
-    private readonly DdKeySender? _ddSender;
     private string? _configLoadMessage;
     private SystemHotkeys? _systemHotkeys;
     private bool _startRegistered, _stopRegistered, _registerOnRelease;
@@ -62,14 +59,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public List<KeyProfile> Profiles { get; private set; }
     public KeyProfile SelectedProfile { get => _selectedProfile; set { if (value is null) return; _selectedProfile = value; OnPropertyChanged(); ConfigureHotkeys(); } }
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
-    public bool CanEdit => _runtime.State != RuntimeState.Running;
+    public bool CanEdit => !_runtime.IsBusy;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
     public ICommand ArmCommand { get; }
-    public ICommand PauseCommand { get; }
     public ICommand StopCommand { get; }
-    public ICommand TriggerCommand { get; }
     public ICommand AddStepCommand { get; }
     public ICommand RemoveStepCommand { get; }
     public ICommand MoveStepUpCommand { get; }
@@ -77,20 +72,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStartCommand { get; }
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
+    public ICommand UseVerifiedPresetCommand { get; }
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
-    public string[] InputModes => _ddSender is not null ? ["DD · HID 键盘"] : _deviceSender is null ? ["扫描码 · SendInput", "虚拟键码 · SendInput"] : ["虚拟 HID 键盘设备"];
-    public int InputModeIndex
-    {
-        get => _ddSender is not null || _deviceSender is not null || _sender.Mode == SendInputMode.ScanCode ? 0 : 1;
-        set
-        {
-            if (_ddSender is not null || _deviceSender is not null || !CanEdit || value is < 0 or > 1) return;
-            _sender.Mode = value == 0 ? SendInputMode.ScanCode : SendInputMode.VirtualKey;
-            OnPropertyChanged();
-            LastMessage = $"已切换：{InputModes[value]}";
-            _logger.Info(LastMessage);
-        }
-    }
 
     public MainViewModel()
     {
@@ -101,37 +84,29 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException)
         {
-            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }] };
+            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] }] };
             _configLoadMessage = $"配置加载失败，已使用默认配置：{exception.Message}";
         }
         Profiles = loaded.Profiles.Count > 0
             ? loaded.Profiles
-            : [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }];
+            : [new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] }];
         _selectedProfile = Profiles[0];
         var logger = _logger = new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log"));
-        // Scan-code mode is closer to physical keyboard event semantics. The
-        // VirtualKey mode remains available for comparison and diagnostics.
-        var sender = _sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
         var arguments = Environment.GetCommandLineArgs();
         var ddIndex = Array.FindIndex(arguments, arg => arg.Equals("--dd", StringComparison.OrdinalIgnoreCase));
-        var hidRequested = arguments.Contains("--hid", StringComparer.OrdinalIgnoreCase);
-        if (ddIndex >= 0)
+        if (ddIndex >= 0 && ddIndex + 1 >= arguments.Length) throw new InvalidOperationException("--dd 后需要 DLL 完整路径");
+        var dllPath = ddIndex >= 0 ? arguments[ddIndex + 1] : FindDdLibrary();
+        DdKeySender sender;
+        try
         {
-            if (hidRequested || ddIndex + 1 >= arguments.Length) throw new InvalidOperationException("使用 --dd DLL完整路径，不能同时指定 --hid");
-            try
-            {
-                _ddSender = new DdKeySender(new DdNativeKeyboard(arguments[ddIndex + 1]));
-                logger.Info($"DD 初始化成功，DLL={Path.GetFullPath(arguments[ddIndex + 1])}");
-            }
-            catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
+            sender = new DdKeySender(new DdNativeKeyboard(dllPath));
+            logger.Info($"DD 初始化成功，DLL={Path.GetFullPath(dllPath)}");
         }
-        if (hidRequested)
-            _deviceSender = new HidDeviceKeySender(new HidDeviceTransport());
-        IKeySender activeSender = (IKeySender?)_ddSender ?? (IKeySender?)_deviceSender ?? sender;
-        _runtime = new RuntimeController(new SequenceRunner(activeSender), activeSender, logger);
+        catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
+        _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
-            StateText = state == RuntimeState.Running ? "运行中" : state == RuntimeState.Paused ? "已暂停" : "已停止";
+            StateText = state == RuntimeState.Running ? "运行中" : "已停止";
             OnPropertyChanged(nameof(CanEdit));
             CommandManager.InvalidateRequerySuggested();
             LastMessage = _runtime.LastMessage;
@@ -140,9 +115,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit);
         ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
-        PauseCommand = new RelayCommand(_ => _runtime.Pause());
+        UseVerifiedPresetCommand = new RelayCommand(_ =>
+        {
+            var preset = new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] };
+            Profiles = [.. Profiles, preset];
+            OnPropertyChanged(nameof(Profiles));
+            SelectedProfile = preset;
+            LastMessage = "已新建已验证参数的配置，点击开始后有 5 秒切换窗口";
+        }, _ => CanEdit);
         StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"));
-        TriggerCommand = new RelayCommand(async _ => await _runtime.TriggerAsync(SelectedProfile));
         AddStepCommand = new RelayCommand(_ => AddStep());
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null);
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
@@ -222,10 +203,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!CanEdit || _captureMode != CaptureMode.None) return;
         if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
         { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
-        _logger.Info($"启动序列 mode={(_ddSender is not null ? "DD-HID" : _deviceSender is null ? _sender.Mode.ToString() : "VirtualHid")}, hold=50ms, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
+        _logger.Info($"启动序列 mode=DD-HID, shared=PulseLoop, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:hold={s.HoldMs}ms,interval={s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
         SelectedProfile.Enabled = true;
         _runtime.Arm();
-        _ = _runtime.TriggerAsync(SelectedProfile);
+        _ = _runtime.TriggerAsync(SelectedProfile, 5000);
     }
 
     private void BeginCapture(CaptureMode mode)
@@ -312,6 +293,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    private static string FindDdLibrary()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "dependencies", "dd", "hid.72000.dll");
+            if (File.Exists(candidate)) return candidate;
+        }
+        throw new FileNotFoundException("找不到 dependencies/dd/hid.72000.dll，请使用根目录启动入口");
+    }
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
 

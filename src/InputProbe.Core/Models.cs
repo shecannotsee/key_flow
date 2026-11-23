@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace InputProbe.Core;
 
-public enum RuntimeState { Stopped, Armed, Running, Paused }
+public enum RuntimeState { Stopped, Armed, Running }
 
 public sealed class KeyStep : INotifyPropertyChanged
 {
@@ -11,6 +11,8 @@ public sealed class KeyStep : INotifyPropertyChanged
     public KeyStep(string key, int waitAfterMs = 80) => (Key, WaitAfterMs) = (key, waitAfterMs);
     private string _key = "D1";
     private int _waitAfterMs = 80;
+    private int _holdMs = 30;
+    public int HoldMs { get => _holdMs; set { _holdMs = value; OnPropertyChanged(); } }
     public string Key { get => _key; set { _key = value; OnPropertyChanged(); } }
     public int WaitAfterMs { get => _waitAfterMs; set { _waitAfterMs = value; OnPropertyChanged(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -20,13 +22,11 @@ public sealed class KeyStep : INotifyPropertyChanged
 public sealed class KeyProfile : INotifyPropertyChanged
 {
     private string _name = "新建配置";
-    private string _targetProcess = "";
     private string _startHotkey = "F8";
     private string _stopHotkey = "F9";
     private List<KeyStep> _steps = [];
     private bool _enabled;
     public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
-    public string TargetProcess { get => _targetProcess; set { _targetProcess = value; OnPropertyChanged(); } }
     public string StartHotkey { get => _startHotkey; set { _startHotkey = value; OnPropertyChanged(); } }
     public string StopHotkey { get => _stopHotkey; set { _stopHotkey = value; OnPropertyChanged(); } }
     public List<KeyStep> Steps { get => _steps; set { _steps = value; OnPropertyChanged(); } }
@@ -37,9 +37,8 @@ public sealed class KeyProfile : INotifyPropertyChanged
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public List<KeyProfile> Profiles { get; set; } = [];
-    public string PanicHotkey { get; set; } = "Ctrl+Shift+F12";
 }
 
 public interface IKeySender
@@ -63,36 +62,13 @@ public sealed class NullInputLogger : IInputLogger
     public void Error(string message, Exception exception) { }
 }
 
-public interface IForegroundWindowGuard
+public sealed class SequenceRunner(IKeySender sender)
 {
-    bool IsTargetForeground(string targetProcess);
-}
-
-public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? guard = null)
-{
-    public async Task<bool> RunAsync(KeyProfile profile, CancellationToken cancellationToken)
+    public Task RunAsync(KeyProfile profile, CancellationToken cancellationToken)
     {
         Validate(profile);
-        while (true)
-        {
-            foreach (var step in profile.Steps)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
-                // Keep a snapshot: edits or selection changes must not release another key.
-                var key = step.Key;
-                sender.KeyDown(key);
-                try
-                {
-                    await Task.Delay(50, cancellationToken);
-                }
-                finally
-                {
-                    sender.KeyUp(key);
-                }
-                await Task.Delay(step.WaitAfterMs, cancellationToken);
-            }
-        }
+        var steps = profile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = step.HoldMs }).ToArray();
+        return Task.Run(() => PulseLoop.Run(sender, steps, cancellationToken), cancellationToken);
     }
 
     private static void Validate(KeyProfile profile)
@@ -102,8 +78,9 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? gu
         foreach (var step in profile.Steps)
         {
             if (string.IsNullOrWhiteSpace(step.Key)) throw new ArgumentException("按键不能为空", nameof(profile));
-            if (step.WaitAfterMs is < 0 or > 3_600_000)
+            if (step.WaitAfterMs is < 0 or > 3_600_050)
                 throw new ArgumentOutOfRangeException(nameof(profile), "步骤间隔必须在 0 到 3600000 毫秒之间");
+            if (step.HoldMs is < 1 or > 60_000) throw new ArgumentOutOfRangeException(nameof(profile), "按住时长必须在 1 到 60000 毫秒之间");
         }
     }
 }
@@ -113,37 +90,37 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
     private readonly IInputLogger _logger = logger ?? new NullInputLogger();
     private CancellationTokenSource? _runCancellation;
     public RuntimeState State { get; private set; } = RuntimeState.Stopped;
+    public bool IsBusy => _runCancellation is not null;
     public event Action<RuntimeState>? StateChanged;
     public string LastMessage { get; private set; } = "未启动";
 
-    public void Arm() => SetState(RuntimeState.Armed, "已就绪，等待触发");
-    public void Pause()
-    {
-        _runCancellation?.Cancel();
-        if (TryCleanup(sender.ReleaseAll)) SetState(RuntimeState.Paused, "已暂停");
-    }
-
-    public async Task TriggerAsync(KeyProfile profile)
+    public void Arm() { if (!IsBusy) SetState(RuntimeState.Armed, "已就绪，等待触发"); }
+    public async Task TriggerAsync(KeyProfile profile, int startDelayMs = 0)
     {
         if (State != RuntimeState.Armed || !profile.Enabled || _runCancellation is not null) return;
         _runCancellation = new CancellationTokenSource();
-        SetState(RuntimeState.Running, $"正在执行 {profile.Name}");
+        SetState(RuntimeState.Running, startDelayMs > 0 ? "5 秒后开始，请切到目标窗口；可随时停止" : $"正在执行 {profile.Name}");
         try
         {
-            var completed = await runner.RunAsync(profile, _runCancellation.Token);
-            SetState(completed ? RuntimeState.Armed : RuntimeState.Stopped,
-                completed ? "序列完成" : "目标窗口已失焦，已停止");
+            if (startDelayMs > 0) await Task.Delay(startDelayMs, _runCancellation.Token);
+            SetState(RuntimeState.Running, $"正在执行 {profile.Name}");
+            await runner.RunAsync(profile, _runCancellation.Token);
         }
         catch (OperationCanceledException)
         {
-            if (State != RuntimeState.Paused) SetState(RuntimeState.Stopped, "已停止");
+            SetState(RuntimeState.Stopped, "已停止");
         }
         catch (Exception exception)
         {
             _logger.Error("序列执行异常", exception);
             SetState(RuntimeState.Stopped, "执行异常，已停止");
         }
-        finally { _runCancellation.Dispose(); _runCancellation = null; TryCleanup(sender.ReleaseAll); }
+        finally
+        {
+            _runCancellation.Dispose(); _runCancellation = null;
+            TryCleanup(sender.ReleaseAll);
+            StateChanged?.Invoke(State);
+        }
     }
 
     public void Stop(string message = "已停止")

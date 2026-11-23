@@ -37,7 +37,7 @@ public sealed class DdNativeKeyboard : IDdKeyboard
             var initialize = Marshal.GetDelegateForFunctionPointer<Unary>(NativeLibrary.GetExport(module, "DD_btn"));
             var result = initialize(0);
             if (result != 1)
-                throw new InvalidOperationException($"DD_btn(0) 初始化失败，返回 {result}。请检查配套驱动安装、设备占用及厂商认证；未切换到 SendInput。");
+                throw new InvalidOperationException($"DD_btn(0) 初始化失败，返回 {result}。请检查配套驱动安装、设备占用及厂商认证。");
         }
     }
     public int ToCode(int virtualKey) => convert(virtualKey);

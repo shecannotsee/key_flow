@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using InputProbe.Windows;
+using InputProbe.Core;
 
 internal static class Program
 {
@@ -36,26 +37,15 @@ internal static class Program
             Console.WriteLine("每 80ms 按一次数字 8（按住 30ms）。Ctrl+C 或关闭窗口停止。");
             Console.WriteLine("请切到目标窗口。5 秒后开始；不要同时运行旧按键程序。");
             if (Stop.Token.WaitHandle.WaitOne(5000)) return 0;
-            long count = 0;
             var clock = Stopwatch.StartNew();
-            while (!Stop.IsCancellationRequested)
+            PulseLoop.Run(sender, [new KeyStep("D8", 80)], Stop.Token, onClick: count =>
             {
-                var started = clock.Elapsed.TotalMilliseconds;
-                try
-                {
-                    sender.KeyDown("D8");
-                    Stop.Token.WaitHandle.WaitOne(30);
-                }
-                finally { sender.KeyUp("D8"); }
-                count++;
                 if (count == 1 || count % 100 == 0)
                     Console.WriteLine($"DD 成功调用 {count} 次；运行 {clock.Elapsed.TotalSeconds:F1}s（不代表目标已接收）");
-                // Start-to-start interval; no catch-up bursts if Windows delays us.
-                var remaining = 80 - (clock.Elapsed.TotalMilliseconds - started);
-                if (remaining > 0) Stop.Token.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(remaining));
-            }
+            });
             return 0;
         }
+        catch (OperationCanceledException) when (Stop.IsCancellationRequested) { return 0; }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"停止：{exception}");
