@@ -20,7 +20,8 @@ public partial class MainWindow : Window
         PreviewKeyDown += (_, args) =>
         {
             if (_viewModel.CaptureText.Length == 0) return;
-            _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key));
+            if (!_viewModel.IsHookInstalled)
+                _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key == Key.System ? args.SystemKey : args.Key));
             args.Handled = true;
         };
         Closed += (_, _) => _viewModel.Dispose();
@@ -33,7 +34,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly JsonConfigStore _store = new(Path.Combine(AppContext.BaseDirectory, "config.json"));
     private readonly RuntimeController _runtime;
     private KeyProfile _selectedProfile;
-    private string _stateText = "Stopped";
+    private string _stateText = "已停止";
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
@@ -44,6 +45,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public List<KeyProfile> Profiles { get; private set; }
     public KeyProfile SelectedProfile { get => _selectedProfile; set { _selectedProfile = value; OnPropertyChanged(); } }
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
+    public bool CanEdit => _runtime.State != RuntimeState.Running;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
@@ -59,6 +61,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
+    public bool IsHookInstalled => _keyboardHook.IsInstalled;
     public string HookText => _keyboardHook.IsInstalled ? "全局 Hook：已安装" : $"全局 Hook：失败（错误码 {_keyboardHook.InstallError}）";
 
     public MainViewModel()
@@ -84,26 +87,28 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
-            StateText = state.ToString();
+            StateText = state == RuntimeState.Running ? "运行中" : state == RuntimeState.Paused ? "已暂停" : "已停止";
+            OnPropertyChanged(nameof(CanEdit));
+            CommandManager.InvalidateRequerySuggested();
             LastMessage = _runtime.LastMessage;
         });
         _keyboardHook = new LowLevelKeyboardHook();
         _keyboardHook.KeyChanged += OnGlobalKeyChanged;
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
-        SaveCommand = new RelayCommand(async _ => await SaveAsync());
+        SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit);
         ArmCommand = new RelayCommand(async _ =>
         {
             SelectedProfile.Enabled = true;
             _runtime.Arm();
             await _runtime.TriggerAsync(SelectedProfile);
-        });
+        }, _ => CanEdit && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         PauseCommand = new RelayCommand(_ => _runtime.Pause());
         StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"));
         TriggerCommand = new RelayCommand(async _ => await _runtime.TriggerAsync(SelectedProfile));
         AddStepCommand = new RelayCommand(_ => AddStep());
-        RemoveStepCommand = new RelayCommand(_ => RemoveStep());
-        MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1));
-        MoveStepDownCommand = new RelayCommand(_ => MoveStep(1));
+        RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null);
+        MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
+        MoveStepDownCommand = new RelayCommand(_ => MoveStep(1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) < SelectedProfile.Steps.Count - 1);
         CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start));
         CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop));
         CaptureSequenceCommand = new RelayCommand(parameter => BeginSequenceCapture(parameter));
@@ -111,18 +116,27 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task SaveAsync()
     {
-        await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles });
-        LastMessage = "配置已保存";
+        try
+        {
+            await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles });
+            LastMessage = "配置已保存";
+        }
+        catch (Exception exception) { LastMessage = $"保存失败：{exception.Message}"; }
     }
 
     private void OnGlobalKeyChanged(int virtualKey, bool isDown)
+    {
+        Application.Current.Dispatcher.BeginInvoke(() => ProcessGlobalKey(virtualKey, isDown));
+    }
+
+    private void ProcessGlobalKey(int virtualKey, bool isDown)
     {
         if (!isDown)
         {
             _panicKeys.Remove(virtualKey);
             return;
         }
-        _panicKeys.Add(virtualKey);
+        if (!_panicKeys.Add(virtualKey)) return;
         if (IsPanicCombination())
         {
             _runtime.Stop("触发全局停止快捷键");
@@ -150,8 +164,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _runtime.Stop("按下结束按键");
             return;
         }
-        if (SelectedProfile.Enabled && string.Equals(key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase))
         {
+            SelectedProfile.Enabled = true;
             if (_runtime.State == RuntimeState.Stopped) _runtime.Arm();
             if (_runtime.State == RuntimeState.Armed) _ = _runtime.TriggerAsync(SelectedProfile);
         }
@@ -159,13 +174,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void BeginCapture(CaptureMode mode)
     {
+        if (!CanEdit) return;
         _captureMode = mode;
         OnPropertyChanged(nameof(CaptureText));
     }
 
     private void CompleteCapture(string key)
     {
-        if (string.IsNullOrEmpty(key)) return;
+        if (string.IsNullOrEmpty(key)) { LastMessage = "暂不支持此按键，请换一个键"; return; }
+        if ((_captureMode == CaptureMode.Start && key == SelectedProfile.StopHotkey) ||
+            (_captureMode == CaptureMode.Stop && key == SelectedProfile.StartHotkey))
+        { LastMessage = "开始和停止不能使用同一个键"; return; }
         switch (_captureMode)
         {
             case CaptureMode.Start: SelectedProfile.StartHotkey = key; break;
@@ -180,7 +199,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     private void AddStep()
-        => AddStep("");
+        => AddStep("D1");
 
     private void AddStep(string key)
     {
@@ -213,7 +232,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         var index = SelectedProfile.Steps.IndexOf(SelectedStep);
         var target = index + offset;
         if (index < 0 || target < 0 || target >= SelectedProfile.Steps.Count) return;
-        (SelectedProfile.Steps[index], SelectedProfile.Steps[target]) = (SelectedProfile.Steps[target], SelectedProfile.Steps[index]);
+        var selected = SelectedStep;
+        var steps = SelectedProfile.Steps.ToList();
+        (steps[index], steps[target]) = (steps[target], steps[index]);
+        SelectedProfile.Steps = steps;
+        SelectedStep = selected;
         OnPropertyChanged(nameof(SelectedProfile));
     }
 
@@ -228,9 +251,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
 
-public sealed class RelayCommand(Action<object?> execute) : ICommand
+public sealed class RelayCommand(Action<object?> execute, Predicate<object?>? canExecute = null) : ICommand
 {
-    public bool CanExecute(object? parameter) => true;
-    public void Execute(object? parameter) => execute(parameter);
-    public event EventHandler? CanExecuteChanged;
+    public bool CanExecute(object? parameter) => canExecute?.Invoke(parameter) ?? true;
+    public void Execute(object? parameter) { if (CanExecute(parameter)) execute(parameter); }
+    public event EventHandler? CanExecuteChanged
+    {
+        add => CommandManager.RequerySuggested += value;
+        remove => CommandManager.RequerySuggested -= value;
+    }
 }
