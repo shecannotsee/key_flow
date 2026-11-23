@@ -45,3 +45,7 @@ Start-8.cmd --check
 运行时自动收起配置并缩小窗口，停止后恢复。热键使用系统注册加按键状态轮询，两种触发去重；日志记录触发来源及拒绝开始原因。轮询不是游戏内兼容性保证，极短按键也可能错过采样。1ms 是允许的设置值，不保证达到 1ms 的实际间隔。
 
 热键接收增加 Raw Input 后台键盘报告；自动输出仍全部使用 DD。打开界面不加载 DD DLL，首次开始才初始化。若出现类似 Win 键的现象，请区分‘打开窗口’和‘首次开始’，初始化前后状态记录在 input-probe.log。参考及验证见 docs/UI_RAWINPUT_STARTUP.md。
+
+## 全局快捷键接收更新
+
+加入 MouseKeyHook 5.7.1 的独立线程键盘监听，保留系统热键、Raw Input 和状态轮询；自动输出仍走 DD。启动日志显示监听是否 ready。DD 初始化产生 Win 键状态变化的问题尚未修复，调查与实测范围见 [HOTKEY_LIBRARY_RESEARCH.md](docs/HOTKEY_LIBRARY_RESEARCH.md)。关闭旧界面后运行原启动入口即可构建最新版。

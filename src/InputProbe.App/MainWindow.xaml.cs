@@ -133,7 +133,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 logger.Info($"DD 初始化前：{InputDiagnostics.DescribeModifiers()}; {InputDiagnostics.DescribeForeground()}");
                 var timer = System.Diagnostics.Stopwatch.StartNew();
-                var native = new DdNativeKeyboard(dllPath);
+                var native = new DdNativeKeyboard(dllPath, logger.Info);
                 logger.Info($"DD 初始化成功 elapsedMs={timer.Elapsed.TotalMilliseconds:F1}：{InputDiagnostics.DescribeModifiers()}; DLL={Path.GetFullPath(dllPath)}");
                 return native;
             }));
@@ -156,7 +156,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             CommandManager.InvalidateRequerySuggested();
             LastMessage = _runtime.LastMessage;
         });
-        _logger.Info("启动：不安装键盘 Hook；快捷键使用 RegisterHotKey / Raw Input / 状态轮询，录入使用 WPF 窗口事件");
+        _logger.Info("启动：快捷键使用独立线程 MouseKeyHook / RegisterHotKey / Raw Input / 状态轮询，录入使用 WPF 窗口事件");
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
         ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
@@ -212,6 +212,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void AttachHotkeys(nint handle)
     {
         _systemHotkeys = new SystemHotkeys(handle);
+        _logger.Info($"MouseKeyHook 监听：{_systemHotkeys.ListenerStatus}");
         _systemHotkeys.Diagnostic += message => _logger.Info(message);
         _logger.Info($"Raw Input 键盘注册：error={_systemHotkeys.RawInputError}");
         _systemHotkeys.Pressed += id =>

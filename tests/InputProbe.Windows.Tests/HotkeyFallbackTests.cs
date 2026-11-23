@@ -6,6 +6,42 @@ using Xunit;
 public sealed class HotkeyFallbackTests
 {
     [Fact]
+    public void HookListenerStartsDispatchesAndDeduplicatesOtherSources()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                using var window = new HwndSource(new HwndSourceParameters("hook-listener-test"));
+                using var hotkeys = new SystemHotkeys(window.Handle, _ => false, () => 1);
+                Assert.Equal("ready", hotkeys.ListenerStatus);
+                Assert.Equal(0, hotkeys.Register(10, 0x87));
+                var count = 0;
+                hotkeys.Pressed += _ => count++;
+                var hook = typeof(SystemHotkeys).GetMethod("OnHookKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                var raw = typeof(SystemHotkeys).GetMethod("OnRawKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                hook.Invoke(hotkeys, new object[] { 0x87u, true });
+                hook.Invoke(hotkeys, new object[] { 0x87u, true });
+                raw.Invoke(hotkeys, new object[] { 0x87u, true });
+                Assert.Equal(1, count);
+                Assert.Equal("KeyboardHook", hotkeys.LastSource);
+                hotkeys.Clear();
+                hook.Invoke(hotkeys, new object[] { 0x87u, false });
+                hook.Invoke(hotkeys, new object[] { 0x87u, true });
+                Assert.Equal(1, count);
+                hotkeys.Dispose();
+                hotkeys.Dispose();
+                Assert.Equal("unavailable", hotkeys.ListenerStatus);
+            }
+            catch (Exception e) { failure = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+    [Fact]
     public void ForegroundChangeClearsMissedModifierReleaseAndReportsCandidate()
     {
         Exception? failure = null;

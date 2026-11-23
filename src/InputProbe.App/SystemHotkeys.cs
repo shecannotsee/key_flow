@@ -16,6 +16,10 @@ public sealed class SystemHotkeys : IDisposable
     private readonly DispatcherTimer poll;
     private readonly Func<uint, bool> keyState;
     private readonly RawKeyboardInput raw;
+    private readonly GlobalKeyboardListener listener;
+    private readonly HashSet<uint> hookHeld = [];
+    private long hookEvents;
+    public string ListenerStatus => listener.StartupError?.Message ?? (listener.IsReady ? "ready" : "unavailable");
     private readonly HashSet<uint> rawHeld = [];
     public int RawInputError => raw.RegistrationError;
     public string LastSource { get; private set; } = "WM_HOTKEY";
@@ -35,6 +39,12 @@ public sealed class SystemHotkeys : IDisposable
         source.AddHook(OnMessage);
         raw = new RawKeyboardInput(window);
         raw.KeyChanged += OnRawKey;
+        listener = new GlobalKeyboardListener();
+        listener.KeyChanged += (key, down) =>
+        {
+            if (disposed || source.Dispatcher.HasShutdownStarted) return;
+            source.Dispatcher.BeginInvoke(new Action(() => { if (!disposed) OnHookKey(key, down); }));
+        };
         poll = new DispatcherTimer(TimeSpan.FromMilliseconds(15), DispatcherPriority.Input, (_, _) => Poll(), source.Dispatcher);
         poll.Start();
     }
@@ -51,7 +61,7 @@ public sealed class SystemHotkeys : IDisposable
         foreach (var id in ids) UnregisterHotKey(source.Handle, id);
         ids.Clear();
         bindings.Clear(); held.Clear(); lastSignal.Clear();
-        rawHeld.Clear();
+        rawHeld.Clear(); hookHeld.Clear();
     }
     private nint OnMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
@@ -66,7 +76,7 @@ public sealed class SystemHotkeys : IDisposable
         if (Environment.TickCount64 >= nextHealth)
         {
             nextHealth = Environment.TickCount64 + 5000;
-            Diagnostic?.Invoke($"接收心跳 rawEvents={rawEvents}, pollTicks={pollTicks}, bindings={bindings.Count}; {InputDiagnostics.DescribeForeground()}");
+            Diagnostic?.Invoke($"接收心跳 hookEvents={hookEvents}, rawEvents={rawEvents}, pollTicks={pollTicks}, bindings={bindings.Count}; {InputDiagnostics.DescribeForeground()}");
         }
         foreach (var (id, binding) in bindings.ToArray())
         {
@@ -74,6 +84,27 @@ public sealed class SystemHotkeys : IDisposable
             var wasDown = held.GetValueOrDefault(id);
             held[id] = down;
             if (down && !wasDown) Signal(id, "GetAsyncKeyState");
+        }
+    }
+    private void OnHookKey(uint key, bool down)
+    {
+        RefreshForeground();
+        hookEvents++;
+        var changed = down ? hookHeld.Add(key) : hookHeld.Remove(key);
+        if (!down || !changed) return;
+        bool HookDown(uint k) => k switch
+        {
+            0x10 => hookHeld.Contains(0x10) || hookHeld.Contains(0xA0) || hookHeld.Contains(0xA1),
+            0x11 => hookHeld.Contains(0x11) || hookHeld.Contains(0xA2) || hookHeld.Contains(0xA3),
+            0x12 => hookHeld.Contains(0x12) || hookHeld.Contains(0xA4) || hookHeld.Contains(0xA5),
+            _ => hookHeld.Contains(k)
+        };
+        foreach (var (id, binding) in bindings.ToArray())
+        {
+            if (binding.Key != key) continue;
+            var matches = IsDown(binding.Key, binding.Modifiers, HookDown);
+            Diagnostic?.Invoke($"KeyboardHook 快捷键 id={id}, matched={matches}");
+            if (matches) Signal(id, "KeyboardHook");
         }
     }
     private void OnRawKey(uint key, bool down)
@@ -96,9 +127,9 @@ public sealed class SystemHotkeys : IDisposable
         if (current == lastForeground) return;
         lastForeground = current;
         // Resynchronize modifiers after focus changes: their key-up may have been missed.
-        rawHeld.Clear();
+        rawHeld.Clear(); hookHeld.Clear();
         foreach (var key in new uint[] { 0x10, 0x11, 0x12, 0x5B, 0x5C })
-            if (keyState(key)) rawHeld.Add(key);
+            if (keyState(key)) { rawHeld.Add(key); hookHeld.Add(key); }
         Diagnostic?.Invoke($"前台切换，已同步修饰键；{InputDiagnostics.DescribeForeground()}");
     }
     private bool RawDown(uint key) => key switch
@@ -132,7 +163,7 @@ public sealed class SystemHotkeys : IDisposable
         LastSource = origin;
         Pressed?.Invoke(id);
     }
-    public void Dispose() { if (disposed) return; disposed = true; poll.Stop(); raw.Dispose(); Clear(); source.RemoveHook(OnMessage); }
+    public void Dispose() { if (disposed) return; disposed = true; poll.Stop(); listener.Dispose(); raw.Dispose(); Clear(); source.RemoveHook(OnMessage); }
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint window, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint window, int id);
