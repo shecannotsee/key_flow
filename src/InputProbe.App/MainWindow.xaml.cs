@@ -16,9 +16,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         MainViewModel _viewModel;
         try { _viewModel = new MainViewModel(); }
-        catch (Win32Exception exception)
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or IOException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
-            MessageBox.Show($"无法启用所选输入后端：{exception.Message}（错误 {exception.NativeErrorCode}）", "Input Probe", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"无法启用所选输入后端：{exception.Message}", "Input Probe", MessageBoxButton.OK, MessageBoxImage.Error);
             Application.Current.Shutdown(1);
             return;
         }
@@ -49,6 +49,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private CaptureMode _captureMode;
     private readonly SendInputKeySender _sender;
     private readonly HidDeviceKeySender? _deviceSender;
+    private readonly DdKeySender? _ddSender;
     private string? _configLoadMessage;
     private SystemHotkeys? _systemHotkeys;
     private bool _startRegistered, _stopRegistered, _registerOnRelease;
@@ -77,13 +78,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
-    public string[] InputModes => _deviceSender is null ? ["扫描码 · SendInput", "虚拟键码 · SendInput"] : ["虚拟 HID 键盘设备"];
+    public string[] InputModes => _ddSender is not null ? ["DD · HID 键盘"] : _deviceSender is null ? ["扫描码 · SendInput", "虚拟键码 · SendInput"] : ["虚拟 HID 键盘设备"];
     public int InputModeIndex
     {
-        get => _deviceSender is not null || _sender.Mode == SendInputMode.ScanCode ? 0 : 1;
+        get => _ddSender is not null || _deviceSender is not null || _sender.Mode == SendInputMode.ScanCode ? 0 : 1;
         set
         {
-            if (_deviceSender is not null || !CanEdit || value is < 0 or > 1) return;
+            if (_ddSender is not null || _deviceSender is not null || !CanEdit || value is < 0 or > 1) return;
             _sender.Mode = value == 0 ? SendInputMode.ScanCode : SendInputMode.VirtualKey;
             OnPropertyChanged();
             LastMessage = $"已切换：{InputModes[value]}";
@@ -111,9 +112,22 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         // Scan-code mode is closer to physical keyboard event semantics. The
         // VirtualKey mode remains available for comparison and diagnostics.
         var sender = _sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
-        if (Environment.GetCommandLineArgs().Contains("--hid", StringComparer.OrdinalIgnoreCase))
+        var arguments = Environment.GetCommandLineArgs();
+        var ddIndex = Array.FindIndex(arguments, arg => arg.Equals("--dd", StringComparison.OrdinalIgnoreCase));
+        var hidRequested = arguments.Contains("--hid", StringComparer.OrdinalIgnoreCase);
+        if (ddIndex >= 0)
+        {
+            if (hidRequested || ddIndex + 1 >= arguments.Length) throw new InvalidOperationException("使用 --dd DLL完整路径，不能同时指定 --hid");
+            try
+            {
+                _ddSender = new DdKeySender(new DdNativeKeyboard(arguments[ddIndex + 1]));
+                logger.Info($"DD 初始化成功，DLL={Path.GetFullPath(arguments[ddIndex + 1])}");
+            }
+            catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
+        }
+        if (hidRequested)
             _deviceSender = new HidDeviceKeySender(new HidDeviceTransport());
-        IKeySender activeSender = _deviceSender is null ? sender : _deviceSender;
+        IKeySender activeSender = (IKeySender?)_ddSender ?? (IKeySender?)_deviceSender ?? sender;
         _runtime = new RuntimeController(new SequenceRunner(activeSender), activeSender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
@@ -208,7 +222,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!CanEdit || _captureMode != CaptureMode.None) return;
         if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
         { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
-        _logger.Info($"启动序列 mode={(_deviceSender is null ? _sender.Mode.ToString() : "VirtualHid")}, hold=50ms, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
+        _logger.Info($"启动序列 mode={(_ddSender is not null ? "DD-HID" : _deviceSender is null ? _sender.Mode.ToString() : "VirtualHid")}, hold=50ms, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
         SelectedProfile.Enabled = true;
         _runtime.Arm();
         _ = _runtime.TriggerAsync(SelectedProfile);

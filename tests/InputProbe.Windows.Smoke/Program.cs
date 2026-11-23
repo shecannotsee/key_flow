@@ -11,8 +11,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1) { Console.Error.WriteLine("Pass the isolated App.exe path (default config, F8 start)."); return 2; }
-        using var process = Process.Start(new ProcessStartInfo(System.IO.Path.GetFullPath(args[0])) { WorkingDirectory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(args[0]))! })!;
+        if (args.Length < 1) { Console.Error.WriteLine("Pass isolated App.exe path, optionally --dd and DLL path (default config, F8 start)."); return 2; }
+        var start = new ProcessStartInfo(System.IO.Path.GetFullPath(args[0])) { WorkingDirectory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(args[0]))! };
+        foreach (var argument in args.Skip(1)) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start)!;
         if (!process.WaitForInputIdle(10000))
         {
             Console.Error.WriteLine("App did not initialize its message loop within 10 seconds.");

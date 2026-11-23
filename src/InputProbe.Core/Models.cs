@@ -120,8 +120,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
     public void Pause()
     {
         _runCancellation?.Cancel();
-        sender.ReleaseAll();
-        SetState(RuntimeState.Paused, "已暂停");
+        if (TryCleanup(sender.ReleaseAll)) SetState(RuntimeState.Paused, "已暂停");
     }
 
     public async Task TriggerAsync(KeyProfile profile)
@@ -144,22 +143,32 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
             _logger.Error("序列执行异常", exception);
             SetState(RuntimeState.Stopped, "执行异常，已停止");
         }
-        finally { _runCancellation.Dispose(); _runCancellation = null; sender.ReleaseAll(); }
+        finally { _runCancellation.Dispose(); _runCancellation = null; TryCleanup(sender.ReleaseAll); }
     }
 
     public void Stop(string message = "已停止")
     {
         _runCancellation?.Cancel();
-        sender.ReleaseAll();
+        var released = TryCleanup(sender.ReleaseAll);
         _logger.Info(message);
-        SetState(RuntimeState.Stopped, message);
+        SetState(RuntimeState.Stopped, released ? message : "已取消执行，但按键释放失败，请查看日志");
     }
 
     public void Shutdown()
     {
         _runCancellation?.Cancel();
-        sender.Shutdown();
-        _logger.Info("输入运行时已关闭");
+        if (TryCleanup(sender.Shutdown)) _logger.Info("输入运行时已关闭");
+    }
+
+    private bool TryCleanup(Action cleanup)
+    {
+        try { cleanup(); return true; }
+        catch (Exception exception)
+        {
+            _logger.Error("按键清理失败", exception);
+            SetState(RuntimeState.Stopped, "按键释放失败，请查看日志");
+            return false;
+        }
     }
 
     private void SetState(RuntimeState state, string message)
