@@ -40,19 +40,21 @@ public sealed class PulseLoopTests
     }
 
     [Fact]
-    public async Task StopDuringCountdownSendsNothingAndAllowsRestart()
+    public async Task StartSendsImmediatelyAndStopAllowsRestart()
     {
-        var sender = new Fake(_ => throw new Exception("Countdown must not send"));
+        var down = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sender = new Fake(_ => down.TrySetResult());
         var runtime = new RuntimeController(new SequenceRunner(sender), sender);
         var profile = new KeyProfile { Enabled = true, Steps = [new("D8")] };
         runtime.Arm();
-        var run = runtime.TriggerAsync(profile, 5000);
+        var run = runtime.TriggerAsync(profile);
         Assert.True(runtime.IsBusy);
+        await down.Task.WaitAsync(TimeSpan.FromSeconds(2));
         runtime.Stop();
         await run;
         Assert.False(runtime.IsBusy);
         Assert.Equal(RuntimeState.Stopped, runtime.State);
-        Assert.Equal(0, sender.Ups);
+        Assert.True(sender.Ups >= 1);
         runtime.Arm();
         Assert.Equal(RuntimeState.Armed, runtime.State);
     }

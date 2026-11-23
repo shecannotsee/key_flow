@@ -7,6 +7,12 @@ $repoPath = Split-Path $PSScriptRoot
 $appPath = Join-Path $repoPath 'src/InputProbe.App/bin/Debug/net8.0-windows/InputProbe.App.exe'
 $dllPath = Join-Path $repoPath 'dependencies/dd/hid.72000.dll'
 try {
+    if (!$CheckOnly) {
+        $running = Get-Process InputProbe.App -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $appPath.Replace('/', '\') }
+        if ($running) { throw 'Close the existing Input Probe window before restarting.' }
+        & dotnet build (Join-Path $repoPath 'src/InputProbe.App/InputProbe.App.csproj') --nologo --verbosity quiet
+        if ($LASTEXITCODE -ne 0) { throw 'Application build failed.' }
+    }
     if (!(Test-Path -LiteralPath $appPath)) { throw 'Build first: dotnet build InputProbe.sln' }
     $launchOptions = @{ FilePath = $appPath; WorkingDirectory = (Split-Path $appPath) }
     if (!(Test-Path -LiteralPath $dllPath)) { throw 'DD DLL missing: dependencies/dd/hid.72000.dll. See dependencies/dd/README.md.' }

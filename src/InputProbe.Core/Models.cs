@@ -95,15 +95,13 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
     public string LastMessage { get; private set; } = "未启动";
 
     public void Arm() { if (!IsBusy) SetState(RuntimeState.Armed, "已就绪，等待触发"); }
-    public async Task TriggerAsync(KeyProfile profile, int startDelayMs = 0)
+    public async Task TriggerAsync(KeyProfile profile)
     {
         if (State != RuntimeState.Armed || !profile.Enabled || _runCancellation is not null) return;
         _runCancellation = new CancellationTokenSource();
-        SetState(RuntimeState.Running, startDelayMs > 0 ? "5 秒后开始，请切到目标窗口；可随时停止" : $"正在执行 {profile.Name}");
+        SetState(RuntimeState.Running, $"正在重复 {profile.Name}");
         try
         {
-            if (startDelayMs > 0) await Task.Delay(startDelayMs, _runCancellation.Token);
-            SetState(RuntimeState.Running, $"正在执行 {profile.Name}");
             await runner.RunAsync(profile, _runCancellation.Token);
         }
         catch (OperationCanceledException)

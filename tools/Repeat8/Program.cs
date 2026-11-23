@@ -35,8 +35,7 @@ internal static class Program
             Console.WriteLine($"DD HID ready. Top-row 8: VK=0x38, DD={code}.");
             if (checkOnly) { Console.WriteLine("Check passed; no key events sent."); return 0; }
             Console.WriteLine("每 80ms 按一次数字 8（按住 30ms）。Ctrl+C 或关闭窗口停止。");
-            Console.WriteLine("请切到目标窗口。5 秒后开始；不要同时运行旧按键程序。");
-            if (Stop.Token.WaitHandle.WaitOne(5000)) return 0;
+            Console.WriteLine("立即开始；不要同时运行旧按键程序。");
             var clock = Stopwatch.StartNew();
             PulseLoop.Run(sender, [new KeyStep("D8", 80)], Stop.Token, onClick: count =>
             {

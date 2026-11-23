@@ -23,6 +23,8 @@ public partial class MainWindow : Window
             return;
         }
         DataContext = _viewModel;
+        AddHandler(System.Windows.Controls.Validation.ErrorEvent, new EventHandler<System.Windows.Controls.ValidationErrorEventArgs>((_, e) =>
+            _viewModel.ChangeValidationErrors(e.Action == System.Windows.Controls.ValidationErrorEventAction.Added ? 1 : -1)));
         PreviewKeyDown += (_, args) =>
         {
             if (_viewModel.CaptureText.Length == 0) return;
@@ -52,6 +54,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _startRegistered, _stopRegistered, _registerOnRelease;
     private bool _disposed;
     private readonly IInputLogger _logger;
+    private readonly RunFeedback _feedback = new();
+    private bool _isRunning;
+    private bool _isPinned;
+    private int _validationErrors;
+    public bool IsRunning => _isRunning;
+    public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
+    public string WindowTitle => IsRunning ? "● 正在重复 — Input Probe" : "■ 已停止 — Input Probe";
+    public void ChangeValidationErrors(int delta)
+    {
+        _validationErrors = Math.Max(0, _validationErrors + delta);
+        CommandManager.InvalidateRequerySuggested();
+    }
     private string _hotkeyStatus = "正在注册快捷键";
     public string HotkeyStatus { get => _hotkeyStatus; private set { _hotkeyStatus = value; OnPropertyChanged(); } }
 
@@ -106,6 +120,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
+            var running = state == RuntimeState.Running;
+            if (_isRunning != running)
+            {
+                _isRunning = running;
+                _feedback.Play(running, _logger);
+                OnPropertyChanged(nameof(IsRunning));
+                OnPropertyChanged(nameof(WindowTitle));
+            }
             StateText = state == RuntimeState.Running ? "运行中" : "已停止";
             OnPropertyChanged(nameof(CanEdit));
             CommandManager.InvalidateRequerySuggested();
@@ -113,17 +135,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         });
         _logger.Info("启动：不安装键盘 Hook；快捷键使用 RegisterHotKey，录入使用 WPF 窗口事件");
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
-        SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit);
-        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
+        SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
+        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
         {
             var preset = new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] };
             Profiles = [.. Profiles, preset];
             OnPropertyChanged(nameof(Profiles));
             SelectedProfile = preset;
-            LastMessage = "已新建已验证参数的配置，点击开始后有 5 秒切换窗口";
+            LastMessage = "已新建数字 8 配置，开始后立即重复";
         }, _ => CanEdit);
-        StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"));
+        StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"), _ => _runtime.IsBusy);
         AddStepCommand = new RelayCommand(_ => AddStep());
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null);
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
@@ -201,12 +223,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void StartSequence()
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
+        if (_validationErrors != 0) { LastMessage = "请先修正间隔输入"; return; }
+        if (SelectedProfile.Steps.Any(step => step.WaitAfterMs is < 30 or > 3_600_000))
+        { LastMessage = "重复间隔必须在 30 到 3600000 毫秒之间"; return; }
         if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
         { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
-        _logger.Info($"启动序列 mode=DD-HID, shared=PulseLoop, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:hold={s.HoldMs}ms,interval={s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
-        SelectedProfile.Enabled = true;
+        var repeat = new KeyProfile { Name = SelectedProfile.Name, Enabled = true,
+            Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = 30 }).ToList() };
+        _logger.Info($"开始重复 mode=DD-HID, hold=30ms, steps={string.Join(",", repeat.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
         _runtime.Arm();
-        _ = _runtime.TriggerAsync(SelectedProfile, 5000);
+        _ = _runtime.TriggerAsync(repeat);
     }
 
     private void BeginCapture(CaptureMode mode)

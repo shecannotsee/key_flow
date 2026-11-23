@@ -1,5 +1,8 @@
 <UserControl x:Class="InputProbe.App.Controls.HeaderBar" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-<Grid Margin="0,0,0,24"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-<StackPanel><TextBlock Text="按键序列" FontSize="28" FontWeight="SemiBold"/><TextBlock Text="设置顺序，一键开始。" Foreground="{StaticResource TextSecondary}" Margin="0,6,0,0"/></StackPanel>
-<Button Grid.Column="1" Content="保存配置" Command="{Binding SaveCommand}" VerticalAlignment="Center" Margin="0"/>
+<Grid Margin="0,0,0,20"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+<StackPanel><TextBlock Text="重复按键" FontSize="26" FontWeight="SemiBold"/><TextBlock Text="设置按键和间隔，开始即生效。" Foreground="{StaticResource TextSecondary}" Margin="0,5,0,0"/></StackPanel>
+<StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+<ToggleButton IsChecked="{Binding IsPinned}" Padding="12,8" Margin="0,0,8,0" ToolTip="开启后窗口保持在其他普通窗口上方">
+<ToggleButton.Style><Style TargetType="ToggleButton"><Setter Property="Content" Value="窗口置顶"/><Setter Property="Background" Value="#F2F2F7"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border></ControlTemplate></Setter.Value></Setter><Style.Triggers><Trigger Property="IsChecked" Value="True"><Setter Property="Background" Value="#007AFF"/><Setter Property="Foreground" Value="White"/><Setter Property="Content" Value="已置顶"/></Trigger></Style.Triggers></Style></ToggleButton.Style>
+</ToggleButton><Button Content="保存" Command="{Binding SaveCommand}" Margin="0"/></StackPanel>
 </Grid></UserControl>
