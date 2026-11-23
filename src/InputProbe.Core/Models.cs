@@ -79,7 +79,17 @@ public sealed class SequenceRunner(IKeySender sender, IForegroundWindowGuard? gu
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (guard is not null && !guard.IsTargetForeground(profile.TargetProcess)) return false;
-                sender.Press(step.Key);
+                // Keep a snapshot: edits or selection changes must not release another key.
+                var key = step.Key;
+                sender.KeyDown(key);
+                try
+                {
+                    await Task.Delay(50, cancellationToken);
+                }
+                finally
+                {
+                    sender.KeyUp(key);
+                }
                 await Task.Delay(step.WaitAfterMs, cancellationToken);
             }
         }

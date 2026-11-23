@@ -18,7 +18,12 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
     private bool _shutdown;
     public string LastStatus { get; private set; } = "尚未发送";
     public void KeyDown(string key) => Send(key, false);
-    public void KeyUp(string key) => Send(key, true);
+    public void KeyUp(string key)
+    {
+        // Stop/Shutdown may already have released the key during the hold delay.
+        if (_shutdown && !_pressed.Contains(key)) return;
+        Send(key, true);
+    }
     public void Press(string key)
     {
         EnsureReady();
@@ -43,9 +48,9 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
         EnsureReady();
         var vk = ResolveKey(key);
         SendInputs([CreateInput(vk, up)], key, up ? "Up" : "Down");
+        if (up) _pressed.Remove(key); else _pressed.Add(key);
         LastStatus = $"已发送 {key} {(up ? "Up" : "Down")} ({_mode})";
         _logger.Info(LastStatus);
-        if (up) _pressed.Remove(key); else _pressed.Add(key);
     }
 
     private void EnsureReady()

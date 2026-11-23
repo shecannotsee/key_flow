@@ -82,6 +82,37 @@ public sealed class RuntimeTests
         await Assert.ThrowsAsync<ArgumentException>(() => runner.RunAsync(new KeyProfile(), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ClickHoldsBeforeRelease()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var sender = new TimedSender(cancellation);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new SequenceRunner(sender).RunAsync(new KeyProfile { Steps = [new("A")] }, cancellation.Token));
+        Assert.True(sender.HeldMs >= 40, $"Hold was only {sender.HeldMs} ms");
+        Assert.Equal(1, sender.UpCount);
+    }
+
+    [Fact]
+    public async Task CancelDuringHoldStillReleasesKey()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var sender = new TimedSender(cancellation, cancelOnDown: true);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new SequenceRunner(sender).RunAsync(new KeyProfile { Steps = [new("A")] }, cancellation.Token));
+        Assert.Equal(1, sender.UpCount);
+    }
+
+    private sealed class TimedSender(CancellationTokenSource cancellation, bool cancelOnDown = false) : IKeySender
+    {
+        private readonly System.Diagnostics.Stopwatch clock = new();
+        public double HeldMs { get; private set; }
+        public int UpCount { get; private set; }
+        public void KeyDown(string key) { clock.Restart(); if (cancelOnDown) cancellation.Cancel(); }
+        public void KeyUp(string key) { HeldMs = clock.Elapsed.TotalMilliseconds; UpCount++; cancellation.Cancel(); }
+        public void ReleaseAll() { }
+    }
+
     private sealed class RecordingSender(Action? onClick = null) : IKeySender
     {
         public List<string> Clicks { get; } = [];
