@@ -23,6 +23,22 @@ public partial class MainWindow : Window
             return;
         }
         DataContext = _viewModel;
+        var expandedHeight = Height;
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(MainViewModel.IsRunning)) return;
+            if (_viewModel.IsRunning)
+            {
+                expandedHeight = ActualHeight > 0 ? ActualHeight : Height;
+                MinHeight = 300;
+                if (WindowState == WindowState.Normal) Height = 320;
+            }
+            else
+            {
+                MinHeight = 460;
+                if (WindowState == WindowState.Normal) Height = expandedHeight;
+            }
+        };
         AddHandler(System.Windows.Controls.Validation.ErrorEvent, new EventHandler<System.Windows.Controls.ValidationErrorEventArgs>((_, e) =>
             _viewModel.ChangeValidationErrors(e.Action == System.Windows.Controls.ValidationErrorEventAction.Added ? 1 : -1)));
         PreviewKeyDown += (_, args) =>
@@ -192,7 +208,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _systemHotkeys.Pressed += id =>
         {
             if (_disposed || _captureMode != CaptureMode.None) return;
-            _logger.Info($"WM_HOTKEY id={id}; {InputDiagnostics.DescribeForeground()}");
+            _logger.Info($"热键 source={_systemHotkeys.LastSource}, id={id}; {InputDiagnostics.DescribeForeground()}");
             if (id == 1) StartSequence(); else _runtime.Stop("系统热键停止");
         };
         ConfigureHotkeys();
@@ -205,7 +221,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
         _stopRegistered = RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
         var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
-        HotkeyStatus = $"开始：{(_startRegistered ? "系统热键" : "不可用，请重设")} · 停止：{(_stopRegistered ? "系统热键" : "不可用，请重设")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
+        HotkeyStatus = $"开始：{SelectedProfile.StartHotkey} {(_startRegistered ? "✓" : "注册失败")} · 停止：{SelectedProfile.StopHotkey} {(_stopRegistered ? "✓" : "注册失败")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
         _logger.Info(HotkeyStatus);
     }
 
@@ -223,14 +239,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void StartSequence()
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
-        if (_validationErrors != 0) { LastMessage = "请先修正间隔输入"; return; }
-        if (SelectedProfile.Steps.Any(step => step.WaitAfterMs is < 30 or > 3_600_000))
-        { LastMessage = "重复间隔必须在 30 到 3600000 毫秒之间"; return; }
+        if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
+        if (SelectedProfile.Steps.Any(step => step.WaitAfterMs is < 1 or > 3_600_000))
+        { RejectStart("重复间隔必须在 1 到 3600000 毫秒之间"); return; }
         if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
-        { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
+        { RejectStart("序列按键不能与开始/停止热键相同，请修改后启动"); return; }
         var repeat = new KeyProfile { Name = SelectedProfile.Name, Enabled = true,
-            Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = 30 }).ToList() };
-        _logger.Info($"开始重复 mode=DD-HID, hold=30ms, steps={string.Join(",", repeat.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
+            Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList() };
+        _logger.Info($"开始重复 mode=DD-HID, steps={string.Join(",", repeat.Steps.Select(s => $"{s.Key}:interval={s.WaitAfterMs}ms,hold={s.HoldMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
         _runtime.Arm();
         _ = _runtime.TriggerAsync(repeat);
     }
@@ -328,6 +344,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         throw new FileNotFoundException("找不到 dependencies/dd/hid.72000.dll，请使用根目录启动入口");
     }
+
+    private void RejectStart(string reason) { LastMessage = reason; _logger.Info($"开始被拒绝：{reason}"); }
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
 
