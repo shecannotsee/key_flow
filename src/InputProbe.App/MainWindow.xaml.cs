@@ -11,11 +11,17 @@ namespace InputProbe.App;
 
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel _viewModel;
     public MainWindow()
     {
         InitializeComponent();
-        _viewModel = new MainViewModel();
+        MainViewModel _viewModel;
+        try { _viewModel = new MainViewModel(); }
+        catch (Win32Exception exception)
+        {
+            MessageBox.Show($"无法启用所选输入后端：{exception.Message}（错误 {exception.NativeErrorCode}）", "Input Probe", MessageBoxButton.OK, MessageBoxImage.Error);
+            Application.Current.Shutdown(1);
+            return;
+        }
         DataContext = _viewModel;
         PreviewKeyDown += (_, args) =>
         {
@@ -42,6 +48,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
     private readonly SendInputKeySender _sender;
+    private readonly HidDeviceKeySender? _deviceSender;
     private string? _configLoadMessage;
     private SystemHotkeys? _systemHotkeys;
     private bool _startRegistered, _stopRegistered, _registerOnRelease;
@@ -70,13 +77,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
-    public string[] InputModes { get; } = ["扫描码 · SendInput", "虚拟键码 · SendInput"];
+    public string[] InputModes => _deviceSender is null ? ["扫描码 · SendInput", "虚拟键码 · SendInput"] : ["虚拟 HID 键盘设备"];
     public int InputModeIndex
     {
-        get => _sender.Mode == SendInputMode.ScanCode ? 0 : 1;
+        get => _deviceSender is not null || _sender.Mode == SendInputMode.ScanCode ? 0 : 1;
         set
         {
-            if (!CanEdit || value is < 0 or > 1) return;
+            if (_deviceSender is not null || !CanEdit || value is < 0 or > 1) return;
             _sender.Mode = value == 0 ? SendInputMode.ScanCode : SendInputMode.VirtualKey;
             OnPropertyChanged();
             LastMessage = $"已切换：{InputModes[value]}";
@@ -104,7 +111,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         // Scan-code mode is closer to physical keyboard event semantics. The
         // VirtualKey mode remains available for comparison and diagnostics.
         var sender = _sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
-        _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
+        if (Environment.GetCommandLineArgs().Contains("--hid", StringComparer.OrdinalIgnoreCase))
+            _deviceSender = new HidDeviceKeySender(new HidDeviceTransport());
+        IKeySender activeSender = _deviceSender is null ? sender : _deviceSender;
+        _runtime = new RuntimeController(new SequenceRunner(activeSender), activeSender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
             StateText = state == RuntimeState.Running ? "运行中" : state == RuntimeState.Paused ? "已暂停" : "已停止";
@@ -198,7 +208,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!CanEdit || _captureMode != CaptureMode.None) return;
         if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
         { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
-        _logger.Info($"启动序列 mode={_sender.Mode}, hold=50ms, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
+        _logger.Info($"启动序列 mode={(_deviceSender is null ? _sender.Mode.ToString() : "VirtualHid")}, hold=50ms, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
         SelectedProfile.Enabled = true;
         _runtime.Arm();
         _ = _runtime.TriggerAsync(SelectedProfile);
@@ -282,8 +292,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _disposed = true;
         _systemHotkeys?.Dispose();
-        _runtime.Stop("程序退出");
-        _runtime.Shutdown();
+        try { _runtime.Stop("程序退出"); }
+        finally { _runtime.Shutdown(); }
 
     }
 
