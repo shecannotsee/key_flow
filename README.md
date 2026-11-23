@@ -49,3 +49,9 @@ Start-8.cmd --check
 ## 全局快捷键接收更新
 
 加入 MouseKeyHook 5.7.1 的独立线程键盘监听，保留系统热键、Raw Input 和状态轮询；自动输出仍走 DD。启动日志显示监听是否 ready。DD 初始化产生 Win 键状态变化的问题尚未修复，调查与实测范围见 [HOTKEY_LIBRARY_RESEARCH.md](docs/HOTKEY_LIBRARY_RESEARCH.md)。关闭旧界面后运行原启动入口即可构建最新版。
+
+## 启动权限
+
+双击 `Start-InputProbe.cmd` 会默认请求管理员权限，无需额外传入 `-Elevated`（旧参数仍兼容）。GUI 可执行文件也内嵌 `requireAdministrator` 清单，直接双击同样请求提权；若启动方已提权，通常不会再次弹出 UAC。取消授权则不启动程序，启动脚本提示权限不足可能导致游戏热键无效。原有配置和 DD 输出保持不变。
+
+验证：独立 artifacts 目录构建成功（0 警告、0 错误），检查生成 EXE 内嵌管理员清单通过；启动脚本默认 `-CheckOnly` 显示 Elevated=True。未在本次验证中实际弹出或确认 UAC，未重启正在使用的程序。
