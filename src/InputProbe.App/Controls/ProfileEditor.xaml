@@ -2,6 +2,8 @@
 <StackPanel IsEnabled="{Binding CanEdit}">
 <TextBlock Text="配置" FontWeight="SemiBold" Margin="0,0,0,8"/>
 <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Name" Padding="10,8" Margin="0,0,0,24"/>
+<TextBlock Text="输入方式（本次运行）" FontWeight="SemiBold" Margin="0,0,0,8"/>
+<ComboBox ItemsSource="{Binding InputModes}" SelectedIndex="{Binding InputModeIndex}" Padding="10,8" Margin="0,0,0,20"/>
 <TextBlock Text="快捷键" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="点击按键，再按下键盘上的一个键。" Foreground="{StaticResource TextSecondary}" Margin="0,6,0,12"/>
 <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="20"/><ColumnDefinition/></Grid.ColumnDefinitions>
 <StackPanel><TextBlock Text="开始" Foreground="{StaticResource TextSecondary}"/><Button Content="{Binding SelectedProfile.StartHotkey}" Command="{Binding CaptureStartCommand}" Style="{StaticResource KeyCaptureButton}" Margin="0,6,0,0"/></StackPanel>

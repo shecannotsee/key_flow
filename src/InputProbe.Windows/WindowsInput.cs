@@ -13,7 +13,18 @@ public enum SendInputMode
 public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMode mode = SendInputMode.ScanCode) : IKeySender
 {
     private readonly IInputLogger _logger = logger ?? new NullInputLogger();
-    private readonly SendInputMode _mode = mode;
+    private SendInputMode _mode = mode;
+    public SendInputMode Mode
+    {
+        get => _mode;
+        set
+        {
+            EnsureReady();
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            if (_pressed.Count != 0) throw new InvalidOperationException("按键尚未释放，不能切换输入模式");
+            _mode = value;
+        }
+    }
     private readonly HashSet<string> _pressed = new(StringComparer.OrdinalIgnoreCase);
     private bool _shutdown;
     private nint _lastForeground = -1;

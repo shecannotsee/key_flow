@@ -20,10 +20,12 @@ public partial class MainWindow : Window
         PreviewKeyDown += (_, args) =>
         {
             if (_viewModel.CaptureText.Length == 0) return;
-            if (!_viewModel.IsHookInstalled)
+            if (!args.IsRepeat)
                 _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key == Key.System ? args.SystemKey : args.Key));
             args.Handled = true;
         };
+        PreviewKeyUp += (_, _) => _viewModel.FinishCaptureRelease();
+        Deactivated += (_, _) => _viewModel.CancelCapture();
         SourceInitialized += (_, _) => _viewModel.AttachHotkeys(new WindowInteropHelper(this).Handle);
         Closed += (_, _) => _viewModel.Dispose();
     }
@@ -39,8 +41,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
-    private readonly LowLevelKeyboardHook _keyboardHook;
-    private readonly HashSet<int> _panicKeys = [];
+    private readonly SendInputKeySender _sender;
     private string? _configLoadMessage;
     private SystemHotkeys? _systemHotkeys;
     private bool _startRegistered, _stopRegistered, _registerOnRelease;
@@ -69,8 +70,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
-    public bool IsHookInstalled => _keyboardHook.IsInstalled;
-    public string HookText => _keyboardHook.IsInstalled ? "全局 Hook：已安装" : $"全局 Hook：失败（错误码 {_keyboardHook.InstallError}）";
+    public string[] InputModes { get; } = ["扫描码 · SendInput", "虚拟键码 · SendInput"];
+    public int InputModeIndex
+    {
+        get => _sender.Mode == SendInputMode.ScanCode ? 0 : 1;
+        set
+        {
+            if (!CanEdit || value is < 0 or > 1) return;
+            _sender.Mode = value == 0 ? SendInputMode.ScanCode : SendInputMode.VirtualKey;
+            OnPropertyChanged();
+            LastMessage = $"已切换：{InputModes[value]}";
+            _logger.Info(LastMessage);
+        }
+    }
 
     public MainViewModel()
     {
@@ -91,7 +103,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         var logger = _logger = new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log"));
         // Scan-code mode is closer to physical keyboard event semantics. The
         // VirtualKey mode remains available for comparison and diagnostics.
-        var sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
+        var sender = _sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
         _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
@@ -100,8 +112,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             CommandManager.InvalidateRequerySuggested();
             LastMessage = _runtime.LastMessage;
         });
-        _keyboardHook = new LowLevelKeyboardHook();
-        _keyboardHook.KeyChanged += OnGlobalKeyChanged;
+        _logger.Info("启动：不安装键盘 Hook；快捷键使用 RegisterHotKey，录入使用 WPF 窗口事件");
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit);
         ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
@@ -127,50 +138,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception exception) { LastMessage = $"保存失败：{exception.Message}"; }
     }
 
-    private void OnGlobalKeyChanged(int virtualKey, bool isDown)
-    {
-        Application.Current.Dispatcher.BeginInvoke(() => ProcessGlobalKey(virtualKey, isDown));
-    }
-
-    private void ProcessGlobalKey(int virtualKey, bool isDown)
-    {
-        if (_disposed) return;
-        if (!isDown)
-        {
-            if (_registerOnRelease) { _registerOnRelease = false; ConfigureHotkeys(); }
-            _panicKeys.Remove(virtualKey);
-            return;
-        }
-        if (!_panicKeys.Add(virtualKey)) return;
-        if (IsPanicCombination())
-        {
-            _runtime.Stop("触发全局停止快捷键");
-            _panicKeys.Clear();
-            return;
-        }
-        HandleKeyCode(virtualKey);
-    }
-
-    private bool IsPanicCombination()
-        => _panicKeys.Contains(0x7B)
-            && _panicKeys.Any(key => key is 0x11 or 0xA2 or 0xA3)
-            && _panicKeys.Any(key => key is 0x10 or 0xA0 or 0xA1);
-
     public void HandleKeyCode(int virtualKey)
     {
-        var key = VirtualKeyNames.FromVirtualKey(virtualKey);
-        if (_captureMode != CaptureMode.None)
-        {
-            Application.Current.Dispatcher.Invoke(() => CompleteCapture(key));
-            return;
-        }
-        if (!_stopRegistered && string.Equals(key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))
-        {
-            _runtime.Stop("按下结束按键");
-            return;
-        }
-        if (!_startRegistered && string.Equals(key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase))
-            StartSequence();
+        if (_captureMode != CaptureMode.None) CompleteCapture(VirtualKeyNames.FromVirtualKey(virtualKey));
+    }
+
+    public void FinishCaptureRelease()
+    {
+        if (!_registerOnRelease) return;
+        _registerOnRelease = false;
+        ConfigureHotkeys();
+    }
+
+    public void CancelCapture()
+    {
+        if (_captureMode == CaptureMode.None && !_registerOnRelease) return;
+        _captureMode = CaptureMode.None;
+        _registerOnRelease = false;
+        OnPropertyChanged(nameof(CaptureText));
+        ConfigureHotkeys();
     }
 
     public void AttachHotkeys(nint handle)
@@ -192,7 +178,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
         _stopRegistered = RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
         var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
-        HotkeyStatus = $"开始：{(_startRegistered ? "系统热键" : "Hook 备用")} · 停止：{(_stopRegistered ? "系统热键" : "Hook 备用")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
+        HotkeyStatus = $"开始：{(_startRegistered ? "系统热键" : "不可用，请重设")} · 停止：{(_stopRegistered ? "系统热键" : "不可用，请重设")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
         _logger.Info(HotkeyStatus);
     }
 
@@ -201,9 +187,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (string.IsNullOrWhiteSpace(key)) return false;
         var vk = Enumerable.Range(1, 254).FirstOrDefault(code => string.Equals(VirtualKeyNames.FromVirtualKey(code), key, StringComparison.OrdinalIgnoreCase));
         if (vk == 0 || vk == 0x7B)
-        { _logger.Info($"{key}: 未注册系统热键（未知键或 F12 保留键），使用 Hook"); return false; }
+        { _logger.Info($"{key}: 未注册系统热键（未知键或 F12 保留键），请改用其他按键"); return false; }
         var error = _systemHotkeys!.Register(id, (uint)vk);
-        if (error != 0) { LastMessage = $"热键 {key} 注册失败（{error}），使用 Hook 备用"; _logger.Info(LastMessage); }
+        if (error != 0) { LastMessage = $"热键 {key} 注册失败（{error}），使用 不可用，请重设"; _logger.Info(LastMessage); }
         return error == 0;
     }
 
@@ -212,7 +198,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!CanEdit || _captureMode != CaptureMode.None) return;
         if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
         { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
-        _logger.Info($"启动序列; {InputDiagnostics.DescribeForeground()}");
+        _logger.Info($"启动序列 mode={_sender.Mode}, hold=50ms, steps={string.Join(",", SelectedProfile.Steps.Select(s => $"{s.Key}:{s.WaitAfterMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
         SelectedProfile.Enabled = true;
         _runtime.Arm();
         _ = _runtime.TriggerAsync(SelectedProfile);
@@ -233,6 +219,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if ((_captureMode == CaptureMode.Start && key == SelectedProfile.StopHotkey) ||
             (_captureMode == CaptureMode.Stop && key == SelectedProfile.StartHotkey))
         { LastMessage = "开始和停止不能使用同一个键"; return; }
+        if (key == "F12" && _captureMode is CaptureMode.Start or CaptureMode.Stop)
+        { LastMessage = "F12 为系统保留键，请选择其他开始/停止按键"; return; }
         switch (_captureMode)
         {
             case CaptureMode.Start: SelectedProfile.StartHotkey = key; break;
@@ -243,7 +231,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         _captureMode = CaptureMode.None;
         _registerOnRelease = true;
-        if (!IsHookInstalled) ConfigureHotkeys();
+        // Register only after release so the captured key cannot start execution.
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(CaptureText));
     }
@@ -296,7 +284,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _systemHotkeys?.Dispose();
         _runtime.Stop("程序退出");
         _runtime.Shutdown();
-        _keyboardHook.Dispose();
+
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -22,7 +22,7 @@ public sealed class KeyProfile : INotifyPropertyChanged
     private string _name = "新建配置";
     private string _targetProcess = "";
     private string _startHotkey = "F8";
-    private string _stopHotkey = "F12";
+    private string _stopHotkey = "F9";
     private List<KeyStep> _steps = [];
     private bool _enabled;
     public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
