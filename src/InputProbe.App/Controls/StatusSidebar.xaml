@@ -1,6 +1,5 @@
 <UserControl x:Class="InputProbe.App.Controls.StatusSidebar" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 <StackPanel>
-<Button Content="{Binding InitializationText}" Command="{Binding InitializeCommand}" Height="42" Margin="0,0,0,12"/>
 <Border CornerRadius="12" Padding="16" Margin="0,0,0,12">
 <Border.Style><Style TargetType="Border"><Setter Property="Background" Value="#E9EBEF"/><Style.Triggers><DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Background" Value="#DDF5E5"/></DataTrigger></Style.Triggers></Style></Border.Style>
 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
