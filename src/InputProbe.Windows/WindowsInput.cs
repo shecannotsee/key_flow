@@ -16,6 +16,7 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
     private readonly SendInputMode _mode = mode;
     private readonly HashSet<string> _pressed = new(StringComparer.OrdinalIgnoreCase);
     private bool _shutdown;
+    private nint _lastForeground = -1;
     public string LastStatus { get; private set; } = "尚未发送";
     public void KeyDown(string key) => Send(key, false);
     public void KeyUp(string key)
@@ -97,11 +98,18 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
 
     private void SendInputs(INPUT[] inputs, string key, string action, Action<uint>? onPartial = null)
     {
+        var foreground = InputDiagnostics.ForegroundHandle;
+        if (foreground != _lastForeground)
+        {
+            _lastForeground = foreground;
+            _logger.Info(InputDiagnostics.DescribeForeground());
+        }
+        Marshal.SetLastPInvokeError(0);
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        var error = Marshal.GetLastWin32Error();
         if (sent == inputs.Length) return;
         onPartial?.Invoke(sent);
-        var error = Marshal.GetLastWin32Error();
-        LastStatus = $"SendInput 失败: {error}";
+        LastStatus = $"SendInput 失败: requested={inputs.Length}, inserted={sent}, error={error}; 错误码不能判定是否 UIPI";
         var exception = new System.ComponentModel.Win32Exception(error, LastStatus);
         _logger.Error($"{LastStatus} ({key} {action})", exception);
         throw exception;

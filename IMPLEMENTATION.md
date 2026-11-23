@@ -45,3 +45,12 @@
 - 修复 List 排序后不刷新、未选择行时按钮仍可用、重复启动、保存异常无提示、首次快捷键不能启动，以及双重录入路径。
 - Hook 回调通过 Dispatcher 异步投递，状态和集合在 UI 线程处理。
 - 验证：App 构建 0 错误/0 警告；5 项 Core 测试通过。Windows UI Automation 实际启动窗口并枚举操作入口，确认未选中时删除/移动禁用，调用“添加”后行数从 2 增至 3。未验证游戏输入，也未宣称所有历史缺陷已解决。
+
+
+## 2026-11-24 系统热键与应用兼容诊断
+
+- 新增 SystemHotkeys：RegisterHotKey / WM_HOTKEY，重复按下抑制和注销生命周期；按键捕获/旧 F12 继续使用 Hook。
+- 新增 Ctrl+Shift+F10 系统停止；序列包含自身热键时拒绝启动。
+- InputDiagnostics 按前台变化记录真实进程与权限等级，发送失败记录 requested/inserted/error。
+- 管理员启动入口独立提供，不更改原启动脚本或用户配置。
+- 参考来源、可重复验证命令和焦点阻塞记录见 INPUT_COMPATIBILITY.md。

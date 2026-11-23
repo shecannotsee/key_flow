@@ -22,3 +22,25 @@
 
 ## 验证范围
 Core 测试覆盖保持时间（调用层）及按住期间取消后释放。游戏客户端接收效果未验证。
+
+
+## 成熟实现复核与本轮落地
+
+实际读取 AutoHotkey alpha 分支 `source/hotkey.cpp`（RegisterHotKey 调用）和 `source/keyboard_mouse.cpp`（SendInput 与旧事件发送实现）：
+- https://github.com/AutoHotkey/AutoHotkey/blob/alpha/source/hotkey.cpp
+- https://github.com/AutoHotkey/AutoHotkey/blob/alpha/source/keyboard_mouse.cpp
+- https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey
+
+项目采用上述系统热键路线，未复制 AutoHotkey 源码或引入其运行时。WPF HWND 接收 WM_HOTKEY；注册 MOD_NOREPEAT；配置切换和按键录入后重新注册；关闭时注销。F12 被微软保留，旧 F12 配置仍用 Hook，新增 Ctrl+Shift+F10 系统停止键；Ctrl+Shift+F12 旧 Hook 停止保持兼容。注册冲突写入日志并在界面提示回退。序列不能包含自身开始/停止键，防止合成输入触发热键。
+
+SendInput 保持 50ms 扫描码模式；日志新增前台 HWND、PID、进程名称，以及工具/目标完整性级别 RID（8192 中、12288 高）。无法读取时明确 unknown/error，不猜测权限。API 返回成功只代表插入系统输入流，不能代表游戏接收。
+
+`Start-InputProbe-Admin.cmd` 为显式管理员启动入口，由 Windows UAC 决定是否授权；普通启动入口保持原样。测试前关闭旧实例，避免互相抢占热键。管理员启动用于权限对照，不保证游戏兼容。
+
+验证：Windows 真实 RegisterHotKey 测试覆盖成功注册、重复占用失败、Clear/Dispose 释放后重新注册；7 项 Core 测试通过。独立接收窗口测试工具在 `tests/InputProbe.Windows.Smoke`，实际执行两次均因无法取得前台焦点中止，没有向其他窗口发送测试键，也没有测得实际按键时序。不能将该测试记为通过。
+
+重复测试：先构建 App 到隔离目录 `.artifacts/hotkey-review`（没有用户配置），再运行：
+`dotnet run --project tests/InputProbe.Windows.Smoke -- .artifacts/hotkey-review/InputProbe.App.exe`
+运行时接收窗口必须获得焦点，任何失焦都会终止发送；测试启动/停止独立 App 实例，不保存配置。
+
+游戏内尚待验证：WM_HOTKEY 是否到达；toolIntegrity 与 targetIntegrity 是否相同；SendInput 是否返回错误；返回成功但客户端无动作的情况另行记录。尚未取得博主源码，不能声称本项目已经复现其客户端结果。

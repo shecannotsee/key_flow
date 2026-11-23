@@ -24,6 +24,7 @@ public partial class MainWindow : Window
                 _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key == Key.System ? args.SystemKey : args.Key));
             args.Handled = true;
         };
+        SourceInitialized += (_, _) => _viewModel.AttachHotkeys(new WindowInteropHelper(this).Handle);
         Closed += (_, _) => _viewModel.Dispose();
     }
 }
@@ -41,9 +42,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly LowLevelKeyboardHook _keyboardHook;
     private readonly HashSet<int> _panicKeys = [];
     private string? _configLoadMessage;
+    private SystemHotkeys? _systemHotkeys;
+    private bool _startRegistered, _stopRegistered, _registerOnRelease;
+    private bool _disposed;
+    private readonly IInputLogger _logger;
+    private string _hotkeyStatus = "正在注册快捷键";
+    public string HotkeyStatus { get => _hotkeyStatus; private set { _hotkeyStatus = value; OnPropertyChanged(); } }
+
 
     public List<KeyProfile> Profiles { get; private set; }
-    public KeyProfile SelectedProfile { get => _selectedProfile; set { _selectedProfile = value; OnPropertyChanged(); } }
+    public KeyProfile SelectedProfile { get => _selectedProfile; set { if (value is null) return; _selectedProfile = value; OnPropertyChanged(); ConfigureHotkeys(); } }
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
     public bool CanEdit => _runtime.State != RuntimeState.Running;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
@@ -80,7 +88,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             ? loaded.Profiles
             : [new KeyProfile { Name = "基础序列", Steps = [new("D1"), new("D2")] }];
         _selectedProfile = Profiles[0];
-        var logger = new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log"));
+        var logger = _logger = new FileInputLogger(Path.Combine(AppContext.BaseDirectory, "input-probe.log"));
         // Scan-code mode is closer to physical keyboard event semantics. The
         // VirtualKey mode remains available for comparison and diagnostics.
         var sender = new SendInputKeySender(logger, SendInputMode.ScanCode);
@@ -96,12 +104,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _keyboardHook.KeyChanged += OnGlobalKeyChanged;
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit);
-        ArmCommand = new RelayCommand(async _ =>
-        {
-            SelectedProfile.Enabled = true;
-            _runtime.Arm();
-            await _runtime.TriggerAsync(SelectedProfile);
-        }, _ => CanEdit && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
+        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         PauseCommand = new RelayCommand(_ => _runtime.Pause());
         StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"));
         TriggerCommand = new RelayCommand(async _ => await _runtime.TriggerAsync(SelectedProfile));
@@ -131,8 +134,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void ProcessGlobalKey(int virtualKey, bool isDown)
     {
+        if (_disposed) return;
         if (!isDown)
         {
+            if (_registerOnRelease) { _registerOnRelease = false; ConfigureHotkeys(); }
             _panicKeys.Remove(virtualKey);
             return;
         }
@@ -159,22 +164,65 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             Application.Current.Dispatcher.Invoke(() => CompleteCapture(key));
             return;
         }
-        if (string.Equals(key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))
+        if (!_stopRegistered && string.Equals(key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))
         {
             _runtime.Stop("按下结束按键");
             return;
         }
-        if (string.Equals(key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase))
+        if (!_startRegistered && string.Equals(key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase))
+            StartSequence();
+    }
+
+    public void AttachHotkeys(nint handle)
+    {
+        _systemHotkeys = new SystemHotkeys(handle);
+        _systemHotkeys.Pressed += id =>
         {
-            SelectedProfile.Enabled = true;
-            if (_runtime.State == RuntimeState.Stopped) _runtime.Arm();
-            if (_runtime.State == RuntimeState.Armed) _ = _runtime.TriggerAsync(SelectedProfile);
-        }
+            if (_disposed || _captureMode != CaptureMode.None) return;
+            _logger.Info($"WM_HOTKEY id={id}; {InputDiagnostics.DescribeForeground()}");
+            if (id == 1) StartSequence(); else _runtime.Stop("系统热键停止");
+        };
+        ConfigureHotkeys();
+    }
+
+    private void ConfigureHotkeys()
+    {
+        if (_systemHotkeys is null || _disposed) return;
+        _systemHotkeys.Clear();
+        _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
+        _stopRegistered = RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
+        var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
+        HotkeyStatus = $"开始：{(_startRegistered ? "系统热键" : "Hook 备用")} · 停止：{(_stopRegistered ? "系统热键" : "Hook 备用")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
+        _logger.Info(HotkeyStatus);
+    }
+
+    private bool RegisterProfileHotkey(int id, string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        var vk = Enumerable.Range(1, 254).FirstOrDefault(code => string.Equals(VirtualKeyNames.FromVirtualKey(code), key, StringComparison.OrdinalIgnoreCase));
+        if (vk == 0 || vk == 0x7B)
+        { _logger.Info($"{key}: 未注册系统热键（未知键或 F12 保留键），使用 Hook"); return false; }
+        var error = _systemHotkeys!.Register(id, (uint)vk);
+        if (error != 0) { LastMessage = $"热键 {key} 注册失败（{error}），使用 Hook 备用"; _logger.Info(LastMessage); }
+        return error == 0;
+    }
+
+    private void StartSequence()
+    {
+        if (!CanEdit || _captureMode != CaptureMode.None) return;
+        if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
+        { LastMessage = "序列按键不能与开始/停止热键相同，请修改后启动"; return; }
+        _logger.Info($"启动序列; {InputDiagnostics.DescribeForeground()}");
+        SelectedProfile.Enabled = true;
+        _runtime.Arm();
+        _ = _runtime.TriggerAsync(SelectedProfile);
     }
 
     private void BeginCapture(CaptureMode mode)
     {
         if (!CanEdit) return;
+        _systemHotkeys?.Clear();
+        _startRegistered = _stopRegistered = false;
         _captureMode = mode;
         OnPropertyChanged(nameof(CaptureText));
     }
@@ -194,6 +242,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 break;
         }
         _captureMode = CaptureMode.None;
+        _registerOnRelease = true;
+        if (!IsHookInstalled) ConfigureHotkeys();
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(CaptureText));
     }
@@ -242,6 +292,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
+        _systemHotkeys?.Dispose();
         _runtime.Stop("程序退出");
         _runtime.Shutdown();
         _keyboardHook.Dispose();
