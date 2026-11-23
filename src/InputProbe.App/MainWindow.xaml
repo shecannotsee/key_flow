@@ -1,14 +1,14 @@
 <Window x:Class="InputProbe.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:InputProbe.App.Controls" Title="{Binding WindowTitle}" Topmost="{Binding IsPinned}" Width="700" Height="800" MinWidth="540" MinHeight="460" Background="{StaticResource PageBackground}" WindowStartupLocation="CenterScreen">
-  <Grid Margin="24"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid Margin="24"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <controls:HeaderBar/>
-    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
       <controls:PreparationCard VerticalAlignment="Top"/>
     </ScrollViewer>
-    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger><DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger><DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
       <Border Background="{StaticResource SurfaceBackground}" CornerRadius="16" Padding="20"><controls:ProfileEditor/></Border>
     </ScrollViewer>
-    <controls:StatusSidebar Grid.Row="2" Margin="0,16,0,0">
+    <controls:StatusSidebar Grid.Row="1" Margin="0,0,0,16">
       <controls:StatusSidebar.Style><Style TargetType="controls:StatusSidebar"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></controls:StatusSidebar.Style>
     </controls:StatusSidebar>
   </Grid>

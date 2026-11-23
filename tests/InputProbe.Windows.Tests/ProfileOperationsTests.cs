@@ -6,6 +6,24 @@ using Xunit;
 public sealed class ProfileOperationsTests
 {
     [Fact]
+    public async Task ToggleModePersistsAndInactiveStopKeyDoesNotConflict()
+    {
+        var profile = new KeyProfile { ToggleHotkey = true, Steps = [new("F9", 80)] };
+        ProfileOperations.ValidateForRepeat([profile]);
+        Assert.True(ProfileOperations.Copy(profile).ToggleHotkey);
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            await new JsonConfigStore(path).SaveAsync(new AppConfig { Profiles = [profile] });
+            Assert.True((await new JsonConfigStore(path).LoadAsync()).Profiles[0].ToggleHotkey);
+            await File.WriteAllTextAsync(path, """{"Version":2,"Profiles":[{"Name":"Old","StartHotkey":"F8","StopHotkey":"F9","Steps":[{"Key":"D8","WaitAfterMs":80}]}]}""");
+            Assert.False((await new JsonConfigStore(path).LoadAsync()).Profiles[0].ToggleHotkey);
+        }
+        finally { File.Delete(path); }
+        profile.ToggleHotkey = false;
+        Assert.Throws<InvalidDataException>(() => ProfileOperations.ValidateForRepeat([profile]));
+    }
+    [Fact]
     public void CopyHasIndependentStepsAndPreservesHotkeys()
     {
         var original = new KeyProfile { Name = "Test", Steps = [new("D8", 80)] };

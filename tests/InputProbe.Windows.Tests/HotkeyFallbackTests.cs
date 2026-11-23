@@ -26,10 +26,19 @@ public sealed class HotkeyFallbackTests
                 raw.Invoke(hotkeys, new object[] { 0x87u, true });
                 Assert.Equal(1, count);
                 Assert.Equal("KeyboardHook", hotkeys.LastSource);
+                Thread.Sleep(180); // Beyond cross-source debounce: held repeats still must not toggle.
+                hook.Invoke(hotkeys, new object[] { 0x87u, true });
+                raw.Invoke(hotkeys, new object[] { 0x87u, true });
+                Assert.Equal(1, count);
+                hook.Invoke(hotkeys, new object[] { 0x87u, false });
+                raw.Invoke(hotkeys, new object[] { 0x87u, false });
+                hook.Invoke(hotkeys, new object[] { 0x87u, true });
+                raw.Invoke(hotkeys, new object[] { 0x87u, true });
+                Assert.Equal(2, count);
                 hotkeys.Clear();
                 hook.Invoke(hotkeys, new object[] { 0x87u, false });
                 hook.Invoke(hotkeys, new object[] { 0x87u, true });
-                Assert.Equal(1, count);
+                Assert.Equal(2, count);
                 hotkeys.Dispose();
                 hotkeys.Dispose();
                 Assert.Equal("unavailable", hotkeys.ListenerStatus);

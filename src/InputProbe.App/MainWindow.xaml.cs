@@ -31,8 +31,8 @@ public partial class MainWindow : Window
             if (_viewModel.IsRunning)
             {
                 expandedHeight = ActualHeight > 0 ? ActualHeight : Height;
-                MinHeight = 300;
-                if (WindowState == WindowState.Normal) Height = 320;
+                MinHeight = 360;
+                if (WindowState == WindowState.Normal) Height = 380;
             }
             else
             {
@@ -88,7 +88,29 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
 
     public List<KeyProfile> Profiles { get; private set; }
-    public KeyProfile SelectedProfile { get => _selectedProfile; set { if (value is null) return; _selectedProfile = value; OnPropertyChanged(); ConfigureHotkeys(); } }
+    public KeyProfile SelectedProfile
+    {
+        get => _selectedProfile;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy) return;
+            CancelCapture();
+            _selectedProfile = value; SelectedStep = null;
+            OnPropertyChanged(); OnPropertyChanged(nameof(UseToggleHotkey));
+            OnPropertyChanged(nameof(StartHotkeyLabel)); ConfigureHotkeys();
+        }
+    }
+    public bool UseToggleHotkey
+    {
+        get => SelectedProfile.ToggleHotkey;
+        set
+        {
+            if (!CanEdit || value == SelectedProfile.ToggleHotkey) return;
+            CancelCapture(); SelectedProfile.ToggleHotkey = value;
+            OnPropertyChanged(); OnPropertyChanged(nameof(StartHotkeyLabel)); ConfigureHotkeys();
+        }
+    }
+    public string StartHotkeyLabel => UseToggleHotkey ? "开始 / 停止" : "开始";
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
     public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !_profileBusy;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
@@ -224,7 +246,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (_disposed || _captureMode != CaptureMode.None) return;
             _logger.Info($"热键 source={_systemHotkeys.LastSource}, id={id}; {InputDiagnostics.DescribeForeground()}");
-            if (id == 1) StartSequence(); else _runtime.Stop("系统热键停止");
+            if (id == 1 && !(UseToggleHotkey && _runtime.IsBusy)) StartSequence();
+            else _runtime.Stop("快捷键已停止");
         };
         ConfigureHotkeys();
     }
@@ -235,9 +258,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         _systemHotkeys.Clear();
         if (!IsInitialized) { HotkeyStatus = "请先点击“准备使用”，快捷键尚未启用"; return; }
         _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
-        _stopRegistered = RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
+        _stopRegistered = !UseToggleHotkey && RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
         var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
         HotkeyStatus = $"开始：{SelectedProfile.StartHotkey} {(_startRegistered ? "✓" : "注册失败")} · 停止：{SelectedProfile.StopHotkey} {(_stopRegistered ? "✓" : "注册失败")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
+        if (UseToggleHotkey)
+            HotkeyStatus = $"单键开关：{SelectedProfile.StartHotkey} {(_startRegistered ? "✓" : "不可用，请换一个键")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : "不可用")}";
         _logger.Info(HotkeyStatus);
     }
 
@@ -258,7 +283,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         if (SelectedProfile.Steps.Any(step => step.WaitAfterMs is < 1 or > 3_600_000))
         { RejectStart("重复间隔必须在 1 到 3600000 毫秒之间"); return; }
-        if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase)))
+        if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || (!UseToggleHotkey && string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))))
         { RejectStart("序列按键不能与开始/停止热键相同，请修改后启动"); return; }
         var repeat = new KeyProfile { Name = SelectedProfile.Name, Enabled = true,
             Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList() };
@@ -279,8 +304,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void CompleteCapture(string key)
     {
         if (string.IsNullOrEmpty(key)) { LastMessage = "暂不支持此按键，请换一个键"; return; }
-        if ((_captureMode == CaptureMode.Start && key == SelectedProfile.StopHotkey) ||
-            (_captureMode == CaptureMode.Stop && key == SelectedProfile.StartHotkey))
+        if (!UseToggleHotkey && ((_captureMode == CaptureMode.Start && key == SelectedProfile.StopHotkey) ||
+            (_captureMode == CaptureMode.Stop && key == SelectedProfile.StartHotkey)))
         { LastMessage = "开始和停止不能使用同一个键"; return; }
         if (key == "F12" && _captureMode is CaptureMode.Start or CaptureMode.Stop)
         { LastMessage = "F12 为系统保留键，请选择其他开始/停止按键"; return; }
