@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>KeyFlow</AssemblyName>
+    <Product>KeyFlow</Product>
+    <Title>KeyFlow</Title>
+    <Description>KeyFlow 按键自动化</Description>
+    <Version>1.0.0</Version>
+    <ApplicationIcon>../../resource/KeyFlow.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="../../resource/KeyFlow.ico" Link="Assets/KeyFlow.ico" />
+    <Resource Include="../../resource/KeyFlow.png" Link="Assets/KeyFlow.png" />
+    <ProjectReference Include="..\KeyFlow.Core\KeyFlow.Core.csproj" />
+    <ProjectReference Include="..\KeyFlow.Windows\KeyFlow.Windows.csproj" />
+  </ItemGroup>
+</Project>

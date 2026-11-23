@@ -1,10 +1,12 @@
-# Input Probe
+# KeyFlow
 
 Windows DD 重复按键工具，.NET 8 / WPF。
 
 ## 使用
 
-双击唯一主线入口 `Start-InputProbe.cmd`，构建最新版并请求管理员权限。直接打开生成的 EXE 同样要求提权。
+安装用户：运行 `dist/KeyFlow-Setup-1.0.0-x64.exe`，安装后从桌面或开始菜单打开 KeyFlow。无需另装 .NET。可在 Windows 设置 → 应用 → KeyFlow 中卸载。
+
+源码用户：双击 `Start-KeyFlow.cmd` 构建并启动，或运行 `tools/Build-Installer.ps1` 生成安装包。程序启动请求管理员权限。
 
 1. 点击“准备使用”。此前配置编辑、保存、置顶、开始、停止和热键不可用。
 2. 初始化成功后选择配置，点击按键按钮录入首个键，设置重复间隔。
@@ -16,14 +18,16 @@ Windows DD 重复按键工具，.NET 8 / WPF。
 
 支持新建、重命名、复制、删除（至少保留一个）、JSON 导入和导出当前配置。导入追加，不替换现有配置；点击“保存配置”才写入本地。保存使用原子替换并保留 `.bak`。
 
-配置与日志仍在 `src/InputProbe.App/bin/Debug/net8.0-windows/` 中的 `config.json` 和 `input-probe.log`，本轮未移动或覆盖。DD 依赖保留在 `dependencies/dd/hid.72000.dll`，须与安装驱动配套。
+配置与日志位于 `%LOCALAPPDATA%\KeyFlow\config.json` 和 `keyflow.log`。首次源码运行可复制旧配置且不覆盖已有配置，原文件不删除；本机已有配置已迁移并核对哈希。更新与卸载保留个人数据及系统共享输入组件。
+
+完整构建与验证记录见 [安装交付](docs/KEYFLOW_INSTALLATION.md)。
 
 ## 架构
 
 - Core：重复调度、配置存储、运行时。
 - Windows：DD 输出、键盘监听、诊断、配置复制与校验。
 - App：模块化 WPF；MainViewModel.Setup.cs 负责手动初始化与配置交换。
-- tests：核心和 Windows 测试。运行 `dotnet test InputProbe.sln`。
+- tests：核心和 Windows 测试。运行 `dotnet test KeyFlow.sln`。
 
 输出仅用 DD；热键接收使用 MouseKeyHook、Raw Input、系统热键和状态轮询。独立 Demo 和旧启动入口已删除，历史可由 Git 恢复。
 
