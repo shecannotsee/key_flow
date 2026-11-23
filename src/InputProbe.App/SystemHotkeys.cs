@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using InputProbe.Windows;
 
 namespace InputProbe.App;
 
@@ -19,10 +20,17 @@ public sealed class SystemHotkeys : IDisposable
     public int RawInputError => raw.RegistrationError;
     public string LastSource { get; private set; } = "WM_HOTKEY";
     private bool disposed;
+    private readonly Func<nint> foreground;
+    private nint lastForeground;
+    private long nextHealth;
+    private long rawEvents, pollTicks;
+    public event Action<string>? Diagnostic;
     public event Action<int>? Pressed;
-    public SystemHotkeys(nint window, Func<uint, bool>? keyState = null)
+    public SystemHotkeys(nint window, Func<uint, bool>? keyState = null, Func<nint>? foreground = null)
     {
         this.keyState = keyState ?? Down;
+        this.foreground = foreground ?? (() => InputDiagnostics.ForegroundHandle);
+        lastForeground = this.foreground();
         source = HwndSource.FromHwnd(window) ?? throw new InvalidOperationException("绐楀彛灏氭湭鍒涘缓");
         source.AddHook(OnMessage);
         raw = new RawKeyboardInput(window);
@@ -53,6 +61,13 @@ public sealed class SystemHotkeys : IDisposable
     }
     private void Poll()
     {
+        RefreshForeground();
+        pollTicks++;
+        if (Environment.TickCount64 >= nextHealth)
+        {
+            nextHealth = Environment.TickCount64 + 5000;
+            Diagnostic?.Invoke($"接收心跳 rawEvents={rawEvents}, pollTicks={pollTicks}, bindings={bindings.Count}; {InputDiagnostics.DescribeForeground()}");
+        }
         foreach (var (id, binding) in bindings.ToArray())
         {
             var down = IsDown(binding.Key, binding.Modifiers);
@@ -63,10 +78,28 @@ public sealed class SystemHotkeys : IDisposable
     }
     private void OnRawKey(uint key, bool down)
     {
+        RefreshForeground();
+        rawEvents++;
         var changed = down ? rawHeld.Add(key) : rawHeld.Remove(key);
         if (!down || !changed) return;
         foreach (var (id, binding) in bindings.ToArray())
-            if (binding.Key == key && IsDown(binding.Key, binding.Modifiers, RawDown)) Signal(id, "RawInput");
+        {
+            if (binding.Key != key) continue;
+            var matches = IsDown(binding.Key, binding.Modifiers, RawDown);
+            Diagnostic?.Invoke($"RawInput 快捷键 id={id}, matched={matches}, modifiers={string.Join(",", rawHeld.Where(k => k is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C or >= 0xA0 and <= 0xA5))}");
+            if (matches) Signal(id, "RawInput");
+        }
+    }
+    private void RefreshForeground()
+    {
+        var current = foreground();
+        if (current == lastForeground) return;
+        lastForeground = current;
+        // Resynchronize modifiers after focus changes: their key-up may have been missed.
+        rawHeld.Clear();
+        foreach (var key in new uint[] { 0x10, 0x11, 0x12, 0x5B, 0x5C })
+            if (keyState(key)) rawHeld.Add(key);
+        Diagnostic?.Invoke($"前台切换，已同步修饰键；{InputDiagnostics.DescribeForeground()}");
     }
     private bool RawDown(uint key) => key switch
     {
