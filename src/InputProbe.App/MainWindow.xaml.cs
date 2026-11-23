@@ -129,8 +129,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         DdKeySender sender;
         try
         {
-            sender = new DdKeySender(new DdNativeKeyboard(dllPath));
-            logger.Info($"DD 初始化成功，DLL={Path.GetFullPath(dllPath)}");
+            sender = new DdKeySender(new DeferredDdKeyboard(() =>
+            {
+                logger.Info($"DD 初始化前：{InputDiagnostics.DescribeModifiers()}; {InputDiagnostics.DescribeForeground()}");
+                var native = new DdNativeKeyboard(dllPath);
+                logger.Info($"DD 初始化成功：{InputDiagnostics.DescribeModifiers()}; DLL={Path.GetFullPath(dllPath)}");
+                return native;
+            }));
+            logger.Info("窗口已启动：尚未加载 DD DLL，未发送任何按键；首次开始时初始化");
         }
         catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
         _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
@@ -205,6 +211,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void AttachHotkeys(nint handle)
     {
         _systemHotkeys = new SystemHotkeys(handle);
+        _logger.Info($"Raw Input 键盘注册：error={_systemHotkeys.RawInputError}");
         _systemHotkeys.Pressed += id =>
         {
             if (_disposed || _captureMode != CaptureMode.None) return;

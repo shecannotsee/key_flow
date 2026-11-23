@@ -111,7 +111,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
         catch (Exception exception)
         {
             _logger.Error("序列执行异常", exception);
-            SetState(RuntimeState.Stopped, "执行异常，已停止");
+            SetState(RuntimeState.Stopped, $"执行失败：{exception.Message}");
         }
         finally
         {

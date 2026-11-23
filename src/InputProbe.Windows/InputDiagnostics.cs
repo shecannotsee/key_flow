@@ -5,6 +5,9 @@ namespace InputProbe.Windows;
 
 public static class InputDiagnostics
 {
+    public static string DescribeModifiers() => $"LWin={IsDown(0x5B)},RWin={IsDown(0x5C)},Ctrl={IsDown(0x11)},Alt={IsDown(0x12)},Shift={IsDown(0x10)}";
+    private static bool IsDown(int key) => (GetAsyncKeyState(key) & 0x8000) != 0;
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
     public static nint ForegroundHandle => GetForegroundWindow();
     public static string DescribeForeground()
     {

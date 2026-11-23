@@ -5,6 +5,22 @@ using Xunit;
 public sealed class DdKeySenderTests
 {
     [Fact]
+    public void OpeningAndClosingWithoutStartingDoesNotInitializeDd()
+    {
+        var calls = 0;
+        var api = new Api();
+        var sender = new DdKeySender(new DeferredDdKeyboard(() => { calls++; return api; }));
+        sender.ReleaseAll();
+        Assert.Equal(0, calls);
+        sender.KeyDown("D8");
+        sender.KeyUp("D8");
+        sender.KeyDown("D8");
+        sender.Shutdown();
+        Assert.Equal(1, calls);
+        var unused = new DdKeySender(new DeferredDdKeyboard(() => throw new Exception("Must not load on close")));
+        unused.Shutdown();
+    }
+    [Fact]
     public void ConvertsVirtualKeysAndReleasesCombinationInReverseOrder()
     {
         var api = new Api();

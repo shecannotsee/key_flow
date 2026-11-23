@@ -14,6 +14,9 @@ public sealed class SystemHotkeys : IDisposable
     private readonly Dictionary<int, long> lastSignal = [];
     private readonly DispatcherTimer poll;
     private readonly Func<uint, bool> keyState;
+    private readonly RawKeyboardInput raw;
+    private readonly HashSet<uint> rawHeld = [];
+    public int RawInputError => raw.RegistrationError;
     public string LastSource { get; private set; } = "WM_HOTKEY";
     private bool disposed;
     public event Action<int>? Pressed;
@@ -22,6 +25,8 @@ public sealed class SystemHotkeys : IDisposable
         this.keyState = keyState ?? Down;
         source = HwndSource.FromHwnd(window) ?? throw new InvalidOperationException("绐楀彛灏氭湭鍒涘缓");
         source.AddHook(OnMessage);
+        raw = new RawKeyboardInput(window);
+        raw.KeyChanged += OnRawKey;
         poll = new DispatcherTimer(TimeSpan.FromMilliseconds(15), DispatcherPriority.Input, (_, _) => Poll(), source.Dispatcher);
         poll.Start();
     }
@@ -38,6 +43,7 @@ public sealed class SystemHotkeys : IDisposable
         foreach (var id in ids) UnregisterHotKey(source.Handle, id);
         ids.Clear();
         bindings.Clear(); held.Clear(); lastSignal.Clear();
+        rawHeld.Clear();
     }
     private nint OnMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
@@ -55,7 +61,23 @@ public sealed class SystemHotkeys : IDisposable
             if (down && !wasDown) Signal(id, "GetAsyncKeyState");
         }
     }
+    private void OnRawKey(uint key, bool down)
+    {
+        var changed = down ? rawHeld.Add(key) : rawHeld.Remove(key);
+        if (!down || !changed) return;
+        foreach (var (id, binding) in bindings.ToArray())
+            if (binding.Key == key && IsDown(binding.Key, binding.Modifiers, RawDown)) Signal(id, "RawInput");
+    }
+    private bool RawDown(uint key) => key switch
+    {
+        0x10 => rawHeld.Contains(0x10) || rawHeld.Contains(0xA0) || rawHeld.Contains(0xA1),
+        0x11 => rawHeld.Contains(0x11) || rawHeld.Contains(0xA2) || rawHeld.Contains(0xA3),
+        0x12 => rawHeld.Contains(0x12) || rawHeld.Contains(0xA4) || rawHeld.Contains(0xA5),
+        _ => rawHeld.Contains(key)
+    };
     private bool IsDown(uint key, uint modifiers)
+        => IsDown(key, modifiers, keyState);
+    private static bool IsDown(uint key, uint modifiers, Func<uint, bool> keyState)
     {
         uint active = 0;
         if (keyState(0x12)) active |= 1;
@@ -77,7 +99,7 @@ public sealed class SystemHotkeys : IDisposable
         LastSource = origin;
         Pressed?.Invoke(id);
     }
-    public void Dispose() { if (disposed) return; disposed = true; poll.Stop(); Clear(); source.RemoveHook(OnMessage); }
+    public void Dispose() { if (disposed) return; disposed = true; poll.Stop(); raw.Dispose(); Clear(); source.RemoveHook(OnMessage); }
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint window, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint window, int id);

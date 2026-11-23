@@ -6,6 +6,38 @@ using Xunit;
 public sealed class HotkeyFallbackTests
 {
     [Fact]
+    public void RawInputRegistrationAndEdgeDispatchWorkWithoutPollingState()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                using var window = new HwndSource(new HwndSourceParameters("raw-input-test"));
+                using var hotkeys = new SystemHotkeys(window.Handle, _ => false);
+                Assert.Equal(0, hotkeys.RawInputError);
+                Assert.Equal(0, hotkeys.Register(8, 0x84, 6));
+                var count = 0;
+                hotkeys.Pressed += _ => count++;
+                var input = typeof(SystemHotkeys).GetMethod("OnRawKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                input.Invoke(hotkeys, new object[] { 0x11u, true });
+                input.Invoke(hotkeys, new object[] { 0x10u, true });
+                input.Invoke(hotkeys, new object[] { 0x84u, true });
+                input.Invoke(hotkeys, new object[] { 0x84u, true });
+                Assert.Equal(1, count);
+                Assert.Equal("RawInput", hotkeys.LastSource);
+                hotkeys.Clear();
+                input.Invoke(hotkeys, new object[] { 0x84u, true });
+                Assert.Equal(1, count);
+            }
+            catch (Exception e) { failure = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+    [Fact]
     public void PollDetectsEdgeWithoutMessageAndClearDisablesIt()
     {
         Exception? failure = null;
