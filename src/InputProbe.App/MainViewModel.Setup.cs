@@ -15,6 +15,7 @@ public sealed partial class MainViewModel
     public string InitializationText { get; private set; } = "准备使用";
     public ICommand InitializeCommand { get; private set; } = null!;
     public ICommand DuplicateProfileCommand { get; private set; } = null!;
+    public ICommand DeleteProfileCommand { get; private set; } = null!;
     public ICommand ImportCommand { get; private set; } = null!;
     public ICommand ExportCommand { get; private set; } = null!;
 
@@ -28,9 +29,43 @@ public sealed partial class MainViewModel
             OnPropertyChanged(nameof(Profiles)); SelectedProfile = copy;
             LastMessage = "已复制配置；点击保存写入本地";
         }, _ => CanEdit && _validationErrors == 0);
+        DeleteProfileCommand = new RelayCommand(_ => DeleteProfile(), _ => CanEdit && Profiles.Count > 1);
         ImportCommand = new RelayCommand(async _ => await TransferProfileAsync(true), _ => CanEdit && _validationErrors == 0);
         ExportCommand = new RelayCommand(async _ => await TransferProfileAsync(false), _ => CanEdit && _validationErrors == 0);
         LastMessage = "点击“准备使用”后解锁功能；准备期间可能出现菜单弹出或鼠标短暂移动";
+    }
+
+    private void DeleteProfile()
+    {
+        var profile = SelectedProfile;
+        var index = Profiles.IndexOf(profile);
+        if (index < 0 || Profiles.Count <= 1 || !CanEdit) return;
+        CancelCapture();
+        _profileBusy = true;
+        _systemHotkeys?.Clear();
+        OnPropertyChanged(nameof(CanEdit)); CommandManager.InvalidateRequerySuggested();
+        try
+        {
+            var answer = MessageBox.Show(Application.Current.MainWindow,
+                $"删除配置“{profile.Name}”？\n删除后请点击“保存配置”保留更改。", "删除配置",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes || _disposed) return;
+            Profiles = Profiles.Where(item => !ReferenceEquals(item, profile)).ToList();
+            SelectedStep = null;
+            OnPropertyChanged(nameof(Profiles));
+            SelectedProfile = Profiles[Math.Min(index, Profiles.Count - 1)];
+            LastMessage = "已删除配置；点击保存保留更改";
+            _logger.Info("用户删除了一个配置，尚未保存");
+        }
+        finally
+        {
+            _profileBusy = false;
+            if (!_disposed)
+            {
+                ConfigureHotkeys(); OnPropertyChanged(nameof(CanEdit));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
     }
 
     private async Task InitializeAsync()

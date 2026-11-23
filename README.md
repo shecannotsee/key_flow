@@ -14,7 +14,7 @@ Windows DD 重复按键工具，.NET 8 / WPF。
 
 ## 配置
 
-支持新建、重命名、复制、JSON 导入和导出当前配置。导入追加，不替换现有配置；点击“保存配置”才写入本地。保存使用原子替换并保留 `.bak`。
+支持新建、重命名、复制、删除（至少保留一个）、JSON 导入和导出当前配置。导入追加，不替换现有配置；点击“保存配置”才写入本地。保存使用原子替换并保留 `.bak`。
 
 配置与日志仍在 `src/InputProbe.App/bin/Debug/net8.0-windows/` 中的 `config.json` 和 `input-probe.log`，本轮未移动或覆盖。DD 依赖保留在 `dependencies/dd/hid.72000.dll`，须与安装驱动配套。
 
