@@ -12,6 +12,7 @@ public interface IDdKeyboard
 public sealed class DeferredDdKeyboard(Func<IDdKeyboard> factory) : IDdKeyboard
 {
     private readonly Lazy<IDdKeyboard> instance = new(factory);
+    public void Initialize() => _ = instance.Value;
     public int ToCode(int virtualKey) => instance.Value.ToCode(virtualKey);
     public int Key(int code, int action) => instance.Value.Key(code, action);
 }

@@ -4,6 +4,9 @@
     <StackPanel><TextBlock Text="当前配置" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,0,0,8"/><ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Name" Padding="10,7" Margin="0,0,12,0"/></StackPanel>
     <Button Grid.Column="1" Content="＋ 新建" Command="{Binding UseVerifiedPresetCommand}" VerticalAlignment="Bottom" Margin="0"/>
   </Grid>
+  <TextBlock Text="配置名称" FontSize="12" Foreground="{StaticResource TextSecondary}"/>
+  <TextBox Text="{Binding SelectedProfile.Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,8"/>
+  <WrapPanel Margin="0,0,0,14"><Button Content="复制配置" Command="{Binding DuplicateProfileCommand}"/><Button Content="导入" Command="{Binding ImportCommand}"/><Button Content="导出当前配置" Command="{Binding ExportCommand}"/></WrapPanel>
   <Grid Margin="0,0,0,10"><TextBlock Text="重复列表" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="依次重复 · 直到停止" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource TextSecondary}"/></Grid>
   <Border BorderBrush="#E8EBEF" BorderThickness="1" CornerRadius="10" Padding="4">
     <DataGrid ItemsSource="{Binding SelectedProfile.Steps}" SelectedItem="{Binding SelectedStep}" Height="150" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" HeadersVisibility="Column" GridLinesVisibility="None" BorderThickness="0" Background="White" RowBackground="White" AlternatingRowBackground="#FAFBFD" RowHeight="52" SelectionMode="Single" SelectionUnit="FullRow" HorizontalScrollBarVisibility="Disabled">

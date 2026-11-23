@@ -55,13 +55,13 @@ public partial class MainWindow : Window
     }
 }
 
-public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 {
     private enum CaptureMode { None, Start, Stop, Sequence }
     private readonly JsonConfigStore _store = new(Path.Combine(AppContext.BaseDirectory, "config.json"));
     private readonly RuntimeController _runtime;
     private KeyProfile _selectedProfile;
-    private string _stateText = "已停止";
+    private string _stateText = "未初始化";
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
@@ -89,7 +89,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public List<KeyProfile> Profiles { get; private set; }
     public KeyProfile SelectedProfile { get => _selectedProfile; set { if (value is null) return; _selectedProfile = value; OnPropertyChanged(); ConfigureHotkeys(); } }
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
-    public bool CanEdit => !_runtime.IsBusy;
+    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !_profileBusy;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
@@ -129,15 +129,16 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         DdKeySender sender;
         try
         {
-            sender = new DdKeySender(new DeferredDdKeyboard(() =>
+            _keyboard = new DeferredDdKeyboard(() =>
             {
                 logger.Info($"DD 初始化前：{InputDiagnostics.DescribeModifiers()}; {InputDiagnostics.DescribeForeground()}");
                 var timer = System.Diagnostics.Stopwatch.StartNew();
                 var native = new DdNativeKeyboard(dllPath, logger.Info);
                 logger.Info($"DD 初始化成功 elapsedMs={timer.Elapsed.TotalMilliseconds:F1}：{InputDiagnostics.DescribeModifiers()}; DLL={Path.GetFullPath(dllPath)}");
                 return native;
-            }));
-            logger.Info("窗口已启动：尚未加载 DD DLL，未发送任何按键；首次开始时初始化");
+            });
+            sender = new DdKeySender(_keyboard);
+            logger.Info("窗口已启动：等待用户点击初始化 DD");
         }
         catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
         _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
@@ -158,6 +159,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         });
         _logger.Info("启动：快捷键使用独立线程 MouseKeyHook / RegisterHotKey / Raw Input / 状态轮询，录入使用 WPF 窗口事件");
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
+        SetupCommands();
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
         ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
@@ -169,19 +171,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             LastMessage = "已新建数字 8 配置，开始后立即重复";
         }, _ => CanEdit);
         StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"), _ => _runtime.IsBusy);
-        AddStepCommand = new RelayCommand(_ => AddStep());
+        AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null);
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
         MoveStepDownCommand = new RelayCommand(_ => MoveStep(1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) < SelectedProfile.Steps.Count - 1);
-        CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start));
-        CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop));
-        CaptureSequenceCommand = new RelayCommand(parameter => BeginSequenceCapture(parameter));
+        CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start), _ => CanEdit);
+        CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop), _ => CanEdit);
+        CaptureSequenceCommand = new RelayCommand(parameter => BeginSequenceCapture(parameter), _ => CanEdit);
     }
 
     private async Task SaveAsync()
     {
         try
         {
+            ProfileOperations.ValidateForRepeat(Profiles);
             await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles });
             LastMessage = "配置已保存";
         }
@@ -228,6 +231,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_systemHotkeys is null || _disposed) return;
         _systemHotkeys.Clear();
+        if (!IsInitialized) { HotkeyStatus = "请先初始化 DD，快捷键尚未启用"; return; }
         _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
         _stopRegistered = RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
         var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
