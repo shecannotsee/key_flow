@@ -13,6 +13,12 @@ internal static class Program
     {
         if (args.Length != 1) { Console.Error.WriteLine("Pass the isolated App.exe path (default config, F8 start)."); return 2; }
         using var process = Process.Start(new ProcessStartInfo(System.IO.Path.GetFullPath(args[0])) { WorkingDirectory = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(args[0]))! })!;
+        if (!process.WaitForInputIdle(10000))
+        {
+            Console.Error.WriteLine("App did not initialize its message loop within 10 seconds.");
+            process.CloseMainWindow();
+            return 2;
+        }
         var app = new Application();
         var box = new TextBox { AcceptsReturn = true, Text = "Input Probe integration receiver", FontSize = 20 };
         var window = new Window { Title = "Input Probe · independent test receiver", Width = 600, Height = 300, Content = box };

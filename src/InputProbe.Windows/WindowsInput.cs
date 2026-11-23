@@ -26,6 +26,7 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
         }
     }
     private readonly HashSet<string> _pressed = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, INPUT> _releaseInputs = new(StringComparer.OrdinalIgnoreCase);
     private bool _shutdown;
     private nint _lastForeground = -1;
     public string LastStatus { get; private set; } = "尚未发送";
@@ -40,9 +41,13 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
     {
         EnsureReady();
         var vk = ResolveKey(key);
-        var inputs = new[] { CreateInput(vk, false), CreateInput(vk, true) };
-        SendInputs(inputs, key, "Click", sent => { if (sent > 0) _pressed.Add(key); });
+        var down = CreateInput(vk, false);
+        var up = down;
+        up.U.ki.dwFlags |= 0x0002;
+        var inputs = new[] { down, up };
+        SendInputs(inputs, key, "Click", sent => { if (sent > 0) { _pressed.Add(key); _releaseInputs[key] = up; } });
         _pressed.Remove(key);
+        _releaseInputs.Remove(key);
         LastStatus = $"已发送 {key} Click ({_mode})";
         _logger.Info(LastStatus);
     }
@@ -59,8 +64,15 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
     {
         EnsureReady();
         var vk = ResolveKey(key);
-        SendInputs([CreateInput(vk, up)], key, up ? "Up" : "Down");
-        if (up) _pressed.Remove(key); else _pressed.Add(key);
+        var input = up && _releaseInputs.TryGetValue(key, out var saved) ? saved : CreateInput(vk, up);
+        SendInputs([input], key, up ? "Up" : "Down");
+        if (up) { _pressed.Remove(key); _releaseInputs.Remove(key); }
+        else
+        {
+            _pressed.Add(key);
+            input.U.ki.dwFlags |= 0x0002;
+            _releaseInputs[key] = input;
+        }
         LastStatus = $"已发送 {key} {(up ? "Up" : "Down")} ({_mode})";
         _logger.Info(LastStatus);
     }
@@ -84,7 +96,8 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
 
     private INPUT CreateInput(ushort vk, bool up)
     {
-        var scanCode = MapVirtualKey(vk, 4);
+        var thread = GetWindowThreadProcessId(InputDiagnostics.ForegroundHandle, out _);
+        var scanCode = MapVirtualKeyEx(vk, 4, GetKeyboardLayout(thread));
         if (_mode == SendInputMode.ScanCode && scanCode == 0)
         {
             var exception = new InvalidOperationException($"无法映射扫描码 (VK 0x{vk:X2})");
@@ -92,12 +105,15 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
             throw exception;
         }
         var flags = up ? 0x0002u : 0u;
-        ushort inputScan = 0;
+        // E0 is the extended-key prefix. E1 is not interchangeable with E0.
+        // Some IME layouts return an unprefixed navigation scan code.
+        // These VKs represent the dedicated navigation cluster, not the numpad.
+        if ((scanCode & 0xFF00) == 0xE000 || vk is 0x21 or 0x22 or 0x23 or 0x24 or 0x25 or 0x26 or 0x27 or 0x28 or 0x2D or 0x2E)
+            flags |= 0x0001u;
+        ushort inputScan = (ushort)(scanCode & 0x00FF);
         if (_mode == SendInputMode.ScanCode)
         {
             flags |= 0x0008u;
-            if ((scanCode & 0xFF00) != 0) flags |= 0x0001u;
-            inputScan = (ushort)(scanCode & 0x00FF);
         }
         return new INPUT { type = 1, U = new INPUTUNION { ki = new KEYBDINPUT
         {
@@ -134,10 +150,13 @@ public sealed class SendInputKeySender(IInputLogger? logger = null, SendInputMod
         .ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
 
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
-    [DllImport("user32.dll")] private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+    [DllImport("user32.dll", EntryPoint = "MapVirtualKeyExW")] private static extern uint MapVirtualKeyEx(uint code, uint mapType, nint layout);
+    [DllImport("user32.dll")] private static extern nint GetKeyboardLayout(uint thread);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window, out uint process);
     [StructLayout(LayoutKind.Sequential)] private struct INPUT { public uint type; public INPUTUNION U; }
     // INPUT's union is sized by MOUSEINPUT on x64 (32 bytes), even when sending keyboard events.
-    [StructLayout(LayoutKind.Explicit, Size = 32)] private struct INPUTUNION { [FieldOffset(0)] public KEYBDINPUT ki; }
+    [StructLayout(LayoutKind.Explicit)] private struct INPUTUNION { [FieldOffset(0)] public KEYBDINPUT ki; [FieldOffset(0)] public MOUSEINPUT mi; }
+    [StructLayout(LayoutKind.Sequential)] private struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public nint dwExtraInfo; }
     [StructLayout(LayoutKind.Sequential)] private struct KEYBDINPUT { public ushort wVk, wScan; public uint dwFlags, time; public nint dwExtraInfo; }
 }
 
