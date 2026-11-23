@@ -46,10 +46,10 @@ public partial class MainWindow : Window
         {
             if (_viewModel.CaptureText.Length == 0) return;
             if (!args.IsRepeat)
-                _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key == Key.System ? args.SystemKey : args.Key));
+                _viewModel.HandleKeyCode(KeyInterop.VirtualKeyFromKey(args.Key == Key.System ? args.SystemKey : args.Key), (uint)Keyboard.Modifiers);
             args.Handled = true;
         };
-        PreviewKeyUp += (_, _) => _viewModel.FinishCaptureRelease();
+        PreviewKeyUp += (_, args) => _viewModel.HandleKeyRelease(KeyInterop.VirtualKeyFromKey(args.Key == Key.System ? args.SystemKey : args.Key));
         Deactivated += (_, _) => _viewModel.CancelCapture();
         SourceInitialized += (_, _) => _viewModel.AttachHotkeys(new WindowInteropHelper(this).Handle);
         Closed += (_, _) => _viewModel.Dispose();
@@ -66,6 +66,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _lastMessage = "未启动";
     private KeyStep? _selectedStep;
     private CaptureMode _captureMode;
+    private readonly ChordCapture _chordCapture = new();
     private string? _configLoadMessage;
     private SystemHotkeys? _systemHotkeys;
     private bool _startRegistered, _stopRegistered, _registerOnRelease;
@@ -126,7 +127,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public ICommand UseVerifiedPresetCommand { get; }
-    public string CaptureText => _captureMode == CaptureMode.None ? "" : "请按下一个按键...";
+    public string CaptureText => _captureMode == CaptureMode.None ? "" : "按下主键；组合键请先按住 Ctrl、Alt 或 Shift";
 
     public MainViewModel()
     {
@@ -215,9 +216,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception exception) { LastMessage = $"保存失败：{exception.Message}"; }
     }
 
-    public void HandleKeyCode(int virtualKey)
+    public void HandleKeyCode(int virtualKey, uint modifiers = 0)
     {
-        if (_captureMode != CaptureMode.None) CompleteCapture(VirtualKeyNames.FromVirtualKey(virtualKey));
+        if (_captureMode == CaptureMode.None) return;
+        var chord = _chordCapture.Down(virtualKey, modifiers);
+        if (chord is not null) CompleteCapture(chord);
+    }
+
+    public void HandleKeyRelease(int virtualKey)
+    {
+        var chord = _chordCapture.Up(virtualKey);
+        if (chord is not null && _captureMode != CaptureMode.None) CompleteCapture(chord);
+        if (_chordCapture.IsReleased) FinishCaptureRelease();
     }
 
     public void FinishCaptureRelease()
@@ -231,6 +241,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_captureMode == CaptureMode.None && !_registerOnRelease) return;
         _captureMode = CaptureMode.None;
+        _chordCapture.Reset();
         _registerOnRelease = false;
         OnPropertyChanged(nameof(CaptureText));
         ConfigureHotkeys();
@@ -269,10 +280,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool RegisterProfileHotkey(int id, string key)
     {
         if (string.IsNullOrWhiteSpace(key)) return false;
-        var vk = Enumerable.Range(1, 254).FirstOrDefault(code => string.Equals(VirtualKeyNames.FromVirtualKey(code), key, StringComparison.OrdinalIgnoreCase));
-        if (vk == 0 || vk == 0x7B)
-        { _logger.Info($"{key}: 未注册系统热键（未知键或 F12 保留键），请改用其他按键"); return false; }
-        var error = _systemHotkeys!.Register(id, (uint)vk);
+        KeyChord chord;
+        try { chord = KeyChord.Parse(key); }
+        catch (ArgumentException e) { _logger.Error("快捷键无效", e); return false; }
+        if (chord.MainKey == "F12") return false;
+        var error = _systemHotkeys!.Register(id, (uint)chord.VirtualKey, chord.Modifiers);
         if (error != 0) { LastMessage = $"热键 {key} 注册失败（{error}），使用 不可用，请重设"; _logger.Info(LastMessage); }
         return error == 0;
     }
@@ -281,10 +293,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
-        if (SelectedProfile.Steps.Any(step => step.WaitAfterMs is < 1 or > 3_600_000))
-        { RejectStart("重复间隔必须在 1 到 3600000 毫秒之间"); return; }
-        if (SelectedProfile.Steps.Any(step => string.Equals(step.Key, SelectedProfile.StartHotkey, StringComparison.OrdinalIgnoreCase) || (!UseToggleHotkey && string.Equals(step.Key, SelectedProfile.StopHotkey, StringComparison.OrdinalIgnoreCase))))
-        { RejectStart("序列按键不能与开始/停止热键相同，请修改后启动"); return; }
+        try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
+        catch (InvalidDataException e) { RejectStart(e.Message); return; }
         var repeat = new KeyProfile { Name = SelectedProfile.Name, Enabled = true,
             Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList() };
         _logger.Info($"开始重复 mode=DD-HID, steps={string.Join(",", repeat.Steps.Select(s => $"{s.Key}:interval={s.WaitAfterMs}ms,hold={s.HoldMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
@@ -297,6 +307,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!CanEdit) return;
         _systemHotkeys?.Clear();
         _startRegistered = _stopRegistered = false;
+        _chordCapture.Reset();
         _captureMode = mode;
         OnPropertyChanged(nameof(CaptureText));
     }
@@ -304,11 +315,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void CompleteCapture(string key)
     {
         if (string.IsNullOrEmpty(key)) { LastMessage = "暂不支持此按键，请换一个键"; return; }
-        if (!UseToggleHotkey && ((_captureMode == CaptureMode.Start && key == SelectedProfile.StopHotkey) ||
-            (_captureMode == CaptureMode.Stop && key == SelectedProfile.StartHotkey)))
-        { LastMessage = "开始和停止不能使用同一个键"; return; }
-        if (key == "F12" && _captureMode is CaptureMode.Start or CaptureMode.Stop)
-        { LastMessage = "F12 为系统保留键，请选择其他开始/停止按键"; return; }
+        if (!UseToggleHotkey && ((_captureMode == CaptureMode.Start && KeyChord.Parse(key) == KeyChord.Parse(SelectedProfile.StopHotkey)) ||
+            (_captureMode == CaptureMode.Stop && KeyChord.Parse(key) == KeyChord.Parse(SelectedProfile.StartHotkey))))
+        { LastMessage = "开始和停止不能使用同一个键"; _chordCapture.Reset(); return; }
+        if (KeyChord.Parse(key).MainKey == "F12" && _captureMode is CaptureMode.Start or CaptureMode.Stop)
+        { LastMessage = "F12 为系统保留键，请选择其他开始/停止按键"; _chordCapture.Reset(); return; }
         switch (_captureMode)
         {
             case CaptureMode.Start: SelectedProfile.StartHotkey = key; break;

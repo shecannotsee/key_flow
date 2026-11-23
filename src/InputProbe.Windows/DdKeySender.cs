@@ -70,6 +70,13 @@ public sealed class DdKeySender(IDdKeyboard keyboard) : IKeySender
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(closed, this);
+            var chord = KeyChord.Parse(key);
+            if (chord.Keys.Length > 1)
+            {
+                foreach (var part in chord.Keys) KeyDown(part);
+                return;
+            }
+            key = chord.MainKey;
             if (held.ContainsKey(key)) return;
             if (!VirtualKeys.TryGetValue(key, out var vk)) throw new ArgumentException($"不支持的按键：{key}");
             var code = keyboard.ToCode(vk);
@@ -83,6 +90,16 @@ public sealed class DdKeySender(IDdKeyboard keyboard) : IKeySender
     {
         lock (gate)
         {
+            var chord = KeyChord.Parse(key);
+            if (chord.Keys.Length > 1)
+            {
+                var errors = new List<Exception>();
+                foreach (var part in chord.Keys.Reverse())
+                    try { KeyUp(part); } catch (Exception e) { errors.Add(e); }
+                if (errors.Count > 0) throw new AggregateException("组合键释放失败", errors);
+                return;
+            }
+            key = chord.MainKey;
             if (!held.TryGetValue(key, out var code)) return;
             Check(keyboard.Key(code, 2), key, "Up");
             held.Remove(key);

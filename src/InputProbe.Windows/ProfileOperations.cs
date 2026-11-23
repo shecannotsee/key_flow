@@ -13,19 +13,28 @@ public static class ProfileOperations
 
     public static void ValidateForRepeat(IEnumerable<KeyProfile> profiles)
     {
-        var names = Enumerable.Range(1, 254).Select(VirtualKeyNames.FromVirtualKey).Where(n => n.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var p in profiles)
         {
             if (string.IsNullOrWhiteSpace(p.Name) || p.Steps is null || p.Steps.Count == 0)
                 throw new InvalidDataException("配置名称或按键序列为空");
-            if (!names.Contains(p.StartHotkey) || p.StartHotkey == "F12" ||
-                (!p.ToggleHotkey && (!names.Contains(p.StopHotkey) ||
-                p.StartHotkey.Equals(p.StopHotkey, StringComparison.OrdinalIgnoreCase) || p.StopHotkey == "F12")))
-                throw new InvalidDataException("开始/停止键无效、重复或使用了 F12");
-            foreach (var s in p.Steps)
-                if (!names.Contains(s.Key) || s.WaitAfterMs is < 1 or > 3_600_000 ||
-                    s.Key.Equals(p.StartHotkey, StringComparison.OrdinalIgnoreCase) || (!p.ToggleHotkey && s.Key.Equals(p.StopHotkey, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidDataException("序列按键、间隔无效或与快捷键冲突");
+            KeyChord start, stop;
+            try
+            {
+                start = KeyChord.Parse(p.StartHotkey);
+                stop = p.ToggleHotkey ? start : KeyChord.Parse(p.StopHotkey);
+                if (start.MainKey == "F12" || stop.MainKey == "F12" || (!p.ToggleHotkey && start == stop))
+                    throw new ArgumentException("开始/停止键无效或重复");
+                var emergency = KeyChord.Parse("Ctrl+Shift+F10");
+                if (start == emergency || (!p.ToggleHotkey && stop == emergency)) throw new ArgumentException("请避开紧急停止快捷键");
+                foreach (var s in p.Steps)
+                {
+                    var chord = KeyChord.Parse(s.Key);
+                    if (s.WaitAfterMs is < 1 or > 3_600_000 || chord.CanTrigger(start) ||
+                        (!p.ToggleHotkey && chord.CanTrigger(stop)) || chord.CanTrigger(emergency))
+                        throw new ArgumentException("按键或间隔无效，或序列可能触发启停快捷键");
+                }
+            }
+            catch (ArgumentException e) { throw new InvalidDataException(e.Message, e); }
         }
     }
 }
