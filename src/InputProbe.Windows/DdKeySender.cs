@@ -44,7 +44,7 @@ public sealed class DdNativeKeyboard : IDdKeyboard
             convert = Marshal.GetDelegateForFunctionPointer<Unary>(NativeLibrary.GetExport(module, "DD_todc"));
             key = Marshal.GetDelegateForFunctionPointer<Binary>(NativeLibrary.GetExport(module, "DD_key"));
             var initialize = Marshal.GetDelegateForFunctionPointer<Unary>(NativeLibrary.GetExport(module, "DD_btn"));
-            var result = initialize(0);
+            var result = InitializationCursorRecovery.ForDesktop(diagnostic).Run(() => initialize(0));
             diagnostic?.Invoke($"DD 阶段 after-DD_btn(0) result={result}：{InputDiagnostics.DescribeModifiers()}");
             if (result != 1)
                 throw new InvalidOperationException($"DD_btn(0) 初始化失败，返回 {result}。请检查配套驱动安装、设备占用及厂商认证。");

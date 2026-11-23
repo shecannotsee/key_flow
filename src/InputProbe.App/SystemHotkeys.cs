@@ -5,7 +5,7 @@ using InputProbe.Windows;
 
 namespace InputProbe.App;
 
-// Uses the existing WPF message loop, not a keyboard interception hook.
+// Combines system hotkeys, raw input, polling and an independent low-level listener.
 public sealed class SystemHotkeys : IDisposable
 {
     private readonly HwndSource source;

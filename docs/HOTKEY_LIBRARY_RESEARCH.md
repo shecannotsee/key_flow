@@ -27,3 +27,13 @@ GlobalKeyboardListener 在独立 STA 线程建立 WinForms 消息循环，使用
 旧进程 PID 51852 仍运行，未强行关闭。关闭旧界面后使用 Start-InputProbe.cmd；启动脚本会构建最新代码。观察 MouseKeyHook 监听：ready，切入游戏尝试配置的开始/停止键后查看 hookEvents 与 KeyboardHook 匹配记录。若监听安装失败会记录错误，既有接收方式仍保留。
 
 未完成：DD Win 副作用修复、剑三前台物理快捷键验证。需要日志与实测继续定位，不能宣称成熟库可以保证兼容。
+
+## 初始化鼠标补偿及两路接收的实际证据（2026-11-24）
+
+- 06:53:28：before-load、after-load 均 RWin=False，after-DD_btn(0) 为 True；随后恢复 False 并切到 SearchHost。初始化调用期间的状态变化已被观察到，不能将问题归于 DLL 加载卡顿。
+- 06:57:05/10/15：剑三前台时 hookEvents=1455、rawEvents=1456 均不增长，pollTicks 递增。此前 MouseKeyHook ready、Raw Input error=0；切出后两路有输入。这证明已运行这两条接收链路，不能说添加相同 API 就能解决。记录期间是否实际按下测试键需要结合用户操作确认。
+- 新增 InitializationCursorRecovery：仅包裹 DD_btn(0)，捕获调用前后桌面坐标，在原位置非 (0,0) 且调用后为 (0,0) 时使用 SetCursorPos 恢复。正常移动到其他位置不恢复，读取失败不恢复，初始化抛错时也尝试恢复。日志记录前后坐标和返回结果。
+- 这是启发式事后补偿：不能消除瞬间跳动，无法区分用户恰好移动到 (0,0)，不解决 Win/菜单副作用，也不修复 DD 内部。多显示器负坐标已纳入逻辑测试；尚无真实初始化的光标补偿验证。
+- 未使用 ClipCursor、BlockInput 或强制发送释放键，未修改目标进程或键盘驱动。
+- 热键权限对照使用已有入口：先关闭旧界面，在项目 CMD 执行 Start-InputProbe.cmd -Elevated。UAC 提权由系统交互完成。当前记录 toolIntegrity=8192；管理员实例应为 12288。targetIntegrity=unknown(error=5) 不证明目标一定提权。对照后仍需要观察游戏内 hook/raw 计数，不能把管理员启动视为确定修复。
+- 验证：新增鼠标补偿测试首次暴露无日志回调时恢复操作未执行的问题，修正后 dotnet test InputProbe.sln --artifacts-path .artifacts/cursor-recovery --verbosity quiet：Core 19、Windows 19，共 38 项通过。包含负坐标、无变化、非原点移动、读取不可用及异常清理。Elevated -CheckOnly 成功，仅检查入口配置，没有实际提权或进行剑三测试。
