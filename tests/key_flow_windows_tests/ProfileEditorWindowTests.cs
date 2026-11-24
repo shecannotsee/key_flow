@@ -47,6 +47,14 @@ public sealed class ProfileEditorWindowTests
                 Assert.All(stateButtons, button => Assert.Equal(BindingMode.OneWay,
                     BindingOperations.GetBinding(button, ToggleButton.IsCheckedProperty)?.Mode));
                 VerifySelectorGroupingAndSelection();
+                foreach (var step in new[] { 0, 1, 2 })
+                {
+                    window.DataContext = new EditorState { EditorStep = step };
+                    window.UpdateLayout();
+                    Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                    window.Opacity = 1;
+                    SaveVisual(window, $"editor-{step}.png");
+                }
             }
             catch (Exception exception) { failure = exception; }
             finally
@@ -67,7 +75,7 @@ public sealed class ProfileEditorWindowTests
         var first = new KeyProfile { Name = "我的方案 1", GroupName = "日常", IsInActivationPool = true };
         var second = new KeyProfile { Name = "我的方案 2", GroupName = "日常" };
         var third = new KeyProfile { Name = "我的方案 3", GroupName = "其他", IsInActivationPool = true };
-        var state = new SelectorState { Profiles = [first, second, third], SelectedProfile = second };
+        var state = new SelectorState { Profiles = [first, second, third], SelectedProfile = second, Groups = [new ProfileGroup { Name = "日常组合", Participates = true, MemberIds = [first.Id, second.Id] }] };
         var selector = new ProfileSelector { DataContext = state, Margin = new Thickness(20) };
         var surface = new Border { Background = Brushes.White, Child = selector };
         var host = new Window { Content = surface, Width = 660, Height = 760, Left = -10000, Top = -10000, ShowInTaskbar = false, Opacity = 0 };
@@ -76,16 +84,16 @@ public sealed class ProfileEditorWindowTests
             host.Show(); host.UpdateLayout();
             Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
             var list = FindLogicalChildren<ListBox>(selector).Single();
-            Assert.Equal(2, list.Items.Groups!.Count);
+            Assert.Equal(3, list.Items.Count);
             Assert.Same(second, list.SelectedItem);
             Assert.Empty(FindLogicalChildren<TextBox>(selector)); // Rename belongs to the editor.
-            second.GroupName = "其他";
-            Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
-            var other = list.Items.Groups.Cast<CollectionViewGroup>().Single(group => (string)group.Name == "其他");
-            Assert.Contains(second, other.Items.Cast<object>());
-            Assert.Equal(2, other.ItemCount);
-            Assert.Same(second, list.SelectedItem);
-            Assert.False(second.IsInActivationPool); // Selection/regrouping never opts a profile into triggers.
+            Assert.False(second.IsInActivationPool);
+            var colorSwitch = FindLogicalChildren<CheckBox>(new key_flow_app.Controls.TriggerEditorPage())
+                .Single(box => box.Content?.ToString() == "启用颜色变化触发");
+            Assert.Equal(Visibility.Visible, colorSwitch.Visibility);
+            var group = new ProfileGroup { Name = "配套配置", MemberIds = [first.Id, second.Id] };
+            var editor = new GroupEditorWindow(group, state.Profiles);
+            try { editor.Show(); editor.UpdateLayout(); } finally { editor.Close(); }
             host.UpdateLayout();
             var bitmap = new RenderTargetBitmap((int)surface.ActualWidth, (int)surface.ActualHeight, 96, 96, PixelFormats.Pbgra32);
             bitmap.Render(surface);
@@ -106,8 +114,23 @@ public sealed class ProfileEditorWindowTests
     {
         public List<KeyProfile> Profiles { get; init; } = [];
         public KeyProfile SelectedProfile { get; set; } = new();
-        public IEnumerable<KeyProfile> ParticipatingProfiles => Profiles.Where(profile => profile.IsInActivationPool);
+        public List<ProfileGroup> Groups { get; init; } = [];
+        public bool CanEdit => true;
+        public string SelectedProfileLabel => SelectedProfile.Name;
+        public IEnumerable<KeyProfile> ParticipatingProfiles => Profiles.Where(profile => ProfileParticipation.Includes(profile, Groups));
         public bool HasParticipatingProfiles => ParticipatingProfiles.Any();
+    }
+
+    private static void SaveVisual(FrameworkElement element, string name)
+    {
+        var bitmap = new RenderTargetBitmap((int)element.ActualWidth, (int)element.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(element);
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "key_flow.sln"))) root = root.Parent;
+        if (root is null) return;
+        var directory = Path.Combine(root.FullName, ".artifacts", "ui-review"); Directory.CreateDirectory(directory);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var file = File.Create(Path.Combine(directory, name)); encoder.Save(file);
     }
 
     private static IEnumerable<T> FindLogicalChildren<T>(DependencyObject root) where T : DependencyObject
@@ -121,6 +144,13 @@ public sealed class ProfileEditorWindowTests
 
     private sealed class EditorState
     {
+        public int EditorStep { get; init; }
+        public bool CanEdit => true;
+        public bool ResetsOnRetrigger => true;
+        public bool IgnoresRetrigger => false;
+        public bool UseToggleHotkey { get; set; }
+        public KeyProfile SelectedProfile { get; } = new() { Name = "我的方案 1", SequenceMode = true, Steps = [new("E", 80), new("F", 100)], ColorTriggerEnabled = false };
+
         public bool IsSingleKeyMode => true;
         public bool IsSequenceMode => false;
         public bool IsUnlimitedMode => true;

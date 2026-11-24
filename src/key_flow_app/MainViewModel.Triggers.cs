@@ -22,7 +22,7 @@ public sealed partial class MainViewModel
 
     private async Task StartMonitoringAsync(KeyProfile source)
     {
-        if (!IsInitialized || _disposed || _profileBusy || !source.IsInActivationPool || _monitorCancellations.ContainsKey(source)) return;
+        if (!IsInitialized || _disposed || _profileBusy || !IsParticipating(source) || _monitorCancellations.ContainsKey(source)) return;
         try { ProfileOperations.ValidateForRepeat([source]); }
         catch (InvalidDataException exception) { RejectStart(exception.Message); return; }
 

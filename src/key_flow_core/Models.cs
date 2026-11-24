@@ -23,6 +23,7 @@ public sealed class KeyStep : INotifyPropertyChanged
 
 public sealed class KeyProfile : INotifyPropertyChanged
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
     private string _name = "我的方案 1";
     private string _groupName = "未分组";
     private string _startHotkey = "F8";
@@ -64,6 +65,7 @@ public sealed class AppConfig
 {
     public int Version { get; set; } = JsonConfigStore.CurrentVersion;
     public List<KeyProfile> Profiles { get; set; } = [];
+    public List<ProfileGroup> Groups { get; set; } = [];
 }
 
 public interface IKeySender

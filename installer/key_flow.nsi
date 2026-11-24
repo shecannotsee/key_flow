@@ -3,7 +3,7 @@
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "1.3.5"
+!define VERSION "1.3.6"
 !endif
 Name "key_flow"
 OutFile "${OUTPUT}"

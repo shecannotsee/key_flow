@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -56,6 +56,10 @@ public sealed class JsonConfigStore(string path)
             }
             if (version < 6 && config.Profiles is { Count: > 0 }) config.Profiles[0].IsInActivationPool = true;
         }
+        if (version < 9)
+            config.Groups = (config.Profiles ?? []).Where(profile => profile.GroupName != "未分组")
+                .GroupBy(profile => profile.GroupName)
+                .Select(group => new ProfileGroup { Name = group.Key, MemberIds = group.Select(profile => profile.Id).ToList() }).ToList();
         Validate(config);
         return config;
     }
@@ -86,8 +90,14 @@ public sealed class JsonConfigStore(string path)
         if (config.Version == 0) config.Version = CurrentVersion;
         if (config.Version != CurrentVersion)
             throw new InvalidDataException($"不支持的配置版本: {config.Version}");
-        if (config.Profiles is null || config.Profiles.Count == 0)
-            throw new InvalidDataException("配置至少需要一个配置档案");
+        if (config.Profiles is null)
+            throw new InvalidDataException("配置列表不能为空值");
+        if (config.Groups is null || config.Groups.Any(group => group is null || string.IsNullOrWhiteSpace(group.Name) || group.MemberIds is null))
+            throw new InvalidDataException("配置组无效");
+        if (config.Profiles.Any(profile => profile is null || string.IsNullOrWhiteSpace(profile.Id)) || config.Profiles.Select(profile => profile.Id).Distinct().Count() != config.Profiles.Count)
+            throw new InvalidDataException("方案标识无效或重复");
+        var ids = config.Profiles.Select(profile => profile.Id).ToHashSet();
+        if (config.Groups.Any(group => group.MemberIds.Any(id => !ids.Contains(id)))) throw new InvalidDataException("配置组包含不存在的方案");
         foreach (var profile in config.Profiles)
         {
             AutomationValidation.Validate(profile);

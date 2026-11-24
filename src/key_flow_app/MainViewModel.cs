@@ -40,6 +40,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public int EditorStep { get => _editorStep; private set { _editorStep = Math.Clamp(value, 0, 2); OnPropertyChanged(); OnPropertyChanged(nameof(IsFirstEditorStep)); OnPropertyChanged(nameof(IsLastEditorStep)); } }
     public bool IsFirstEditorStep => EditorStep == 0;
     public bool IsLastEditorStep => EditorStep == 2;
+    public bool ResetsOnRetrigger => SelectedProfile.RetriggerMode == RetriggerMode.ResetTimedRun;
+    public bool IgnoresRetrigger => SelectedProfile.RetriggerMode == RetriggerMode.IgnoreWhileActive;
+    public ICommand SetRetriggerCommand { get; private set; } = null!;
     public bool IsSingleKeyMode => !SelectedProfile.SequenceMode;
     public bool IsSequenceMode => SelectedProfile.SequenceMode;
     public bool IsUnlimitedMode => SelectedProfile.TotalDurationSeconds <= 0;
@@ -55,7 +58,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         get
         {
-            var members = Profiles.Count(profile => profile.IsInActivationPool);
+            var members = Profiles.Count(IsParticipating);
             return members == 0
                 ? "暂无参与触发的方案"
                 : $"{members} 个方案参与触发 · " + (_activationPool.ActiveCount == 0 ? "当前空闲" : $"{_activationPool.ActiveCount} 个正在执行或等待");
@@ -64,11 +67,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
 
     public List<KeyProfile> Profiles { get; private set; }
-    public IEnumerable<KeyProfile> ParticipatingProfiles => Profiles.Where(profile => profile.IsInActivationPool);
-    public bool HasParticipatingProfiles => Profiles.Any(profile => profile.IsInActivationPool);
-    public IEnumerable<string> AvailableGroups => Profiles.Select(profile => profile.GroupName).Distinct().OrderBy(name => name);
-    public ICommand EnableGroupCommand { get; private set; } = null!;
-    public ICommand DisableGroupCommand { get; private set; } = null!;
+    public IEnumerable<KeyProfile> ParticipatingProfiles => Profiles.Where(IsParticipating);
+    public bool HasParticipatingProfiles => Profiles.Any(IsParticipating);
+    public string SelectedProfileLabel => Profiles.Contains(SelectedProfile) ? SelectedProfile.Name : "暂无方案，请新建";
+
     public KeyProfile SelectedProfile
     {
         get => _selectedProfile;
@@ -79,7 +81,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             _selectedProfile.PropertyChanged -= SelectedProfileChanged;
             _selectedProfile = value; SelectedStep = null; ColorStatus = "尚未检测";
             _selectedProfile.PropertyChanged += SelectedProfileChanged;
-            OnPropertyChanged(); OnPropertyChanged(nameof(UseToggleHotkey));
+            OnPropertyChanged(); OnPropertyChanged(nameof(SelectedProfileLabel)); OnPropertyChanged(nameof(UseToggleHotkey));
+            OnPropertyChanged(nameof(ResetsOnRetrigger)); OnPropertyChanged(nameof(IgnoresRetrigger));
             OnPropertyChanged(nameof(StartHotkeyLabel)); ConfigureHotkeys();
             OnPropertyChanged(nameof(IsSingleKeyMode)); OnPropertyChanged(nameof(IsSequenceMode));
             OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
@@ -134,10 +137,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             loaded = new AppConfig { Profiles = [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }] };
             _configLoadMessage = $"配置加载失败，已使用默认配置：{exception.Message}";
         }
-        Profiles = loaded.Profiles.Count > 0
-            ? loaded.Profiles
-            : [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }];
-        _selectedProfile = Profiles[0];
+        Profiles = loaded.Profiles;
+        Groups = loaded.Groups;
+        _selectedProfile = Profiles.FirstOrDefault() ?? new KeyProfile();
         _selectedProfile.PropertyChanged += SelectedProfileChanged;
         var logger = _logger = new FileInputLogger(AppPaths.Log);
         var arguments = Environment.GetCommandLineArgs();
@@ -193,12 +195,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         SetupAutomationCommands();
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
         SetupEditorCommands();
-        EnableGroupCommand = new RelayCommand(group => SetGroupParticipation(group, true), _ => CanEdit);
-        DisableGroupCommand = new RelayCommand(group => SetGroupParticipation(group, false), _ => CanEdit);
-        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && SelectedProfile.IsInActivationPool && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
+        SetupGroupCommands();
+        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && IsParticipating(SelectedProfile) && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
         {
-            var preset = new KeyProfile { Name = ProfileOperations.NextProfileName(Profiles), GroupName = SelectedProfile.GroupName, IsInActivationPool = true, Steps = [new("D8", 80)] };
+            var preset = new KeyProfile { Name = ProfileOperations.NextProfileName(Profiles), IsInActivationPool = false, Steps = [new("D8", 80)] };
             Profiles = [.. Profiles, preset];
             OnPropertyChanged(nameof(Profiles)); OnPropertyChanged(nameof(ActivationPoolStatus));
             SelectedProfile = preset;
@@ -211,8 +212,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             ConfigureHotkeys();
             OnPropertyChanged(nameof(ActivationPoolStatus));
             LastMessage = profile.IsInActivationPool
-                ? $"方案“{profile.Name}”已参与触发；保存配置以保留设置"
-                : $"方案“{profile.Name}”已停止参与触发；保存配置以保留设置";
+                ? $"方案“{profile.Name}”已单独参与触发；保存配置以保留设置"
+                : $"方案“{profile.Name}”已取消单独参与（仍可能由配置组启用）；保存配置以保留设置";
         }, parameter => CanEdit && parameter is KeyProfile profile && Profiles.Contains(profile));
         StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
@@ -224,23 +225,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         CaptureSequenceCommand = new RelayCommand(parameter => BeginSequenceCapture(parameter), _ => CanEdit);
     }
 
-    private void SetGroupParticipation(object? group, bool enabled)
-    {
-        if (!CanEdit || group is not string name) return;
-        foreach (var profile in Profiles.Where(profile => profile.GroupName == name))
-            profile.IsInActivationPool = enabled;
-        ConfigureHotkeys();
-        OnPropertyChanged(nameof(ActivationPoolStatus));
-        CommandManager.InvalidateRequerySuggested();
-        LastMessage = $"分组“{name}”已{(enabled ? "全部参与" : "全部停止参与")}触发；请保存配置";
-    }
-
     private async Task SaveAsync()
     {
         try
         {
             ProfileOperations.ValidateForRepeat(Profiles);
-            await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles });
+            await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles, Groups = Groups });
             LastMessage = "配置已保存";
             _editorWindow?.Close();
         }
@@ -249,18 +239,24 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void SetupEditorCommands()
     {
-        OpenEditorCommand = new RelayCommand(_ => OpenEditor(), _ => CanEdit);
+        OpenEditorCommand = new RelayCommand(_ => OpenEditor(), _ => CanEdit && Profiles.Contains(SelectedProfile));
         CloseEditorCommand = new RelayCommand(_ => _editorWindow?.Close());
         NavigateEditorCommand = new RelayCommand(value => { if (int.TryParse(value?.ToString(), out var step)) EditorStep = step; }, _ => CanEdit);
         PreviousEditorStepCommand = new RelayCommand(_ => EditorStep--, _ => CanEdit && EditorStep > 0);
         NextEditorStepCommand = new RelayCommand(_ => EditorStep++, _ => CanEdit && EditorStep < 2);
         SetWorkflowModeCommand = new RelayCommand(SetWorkflowMode, _ => CanEdit);
+        SetRetriggerCommand = new RelayCommand(value =>
+        {
+            SelectedProfile.RetriggerMode = value?.ToString() == "ignore" ? RetriggerMode.IgnoreWhileActive : RetriggerMode.ResetTimedRun;
+        }, _ => CanEdit && !UseToggleHotkey);
         SetRepeatModeCommand = new RelayCommand(SetRepeatMode, _ => CanEdit);
     }
 
     private void SelectedProfileChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(KeyProfile.GroupName) or null) OnPropertyChanged(nameof(AvailableGroups));
+        if (e.PropertyName is nameof(KeyProfile.RetriggerMode) or null)
+        { OnPropertyChanged(nameof(ResetsOnRetrigger)); OnPropertyChanged(nameof(IgnoresRetrigger)); }
+        if (e.PropertyName is nameof(KeyProfile.Name) or null) OnPropertyChanged(nameof(SelectedProfileLabel));
         if (e.PropertyName is nameof(KeyProfile.DurationSeconds) or nameof(KeyProfile.DurationMilliseconds) or null)
         {
             OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
@@ -273,7 +269,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void OpenEditor()
     {
-        if (!CanEdit || _editorWindow is not null) return;
+        if (!CanEdit || !Profiles.Contains(SelectedProfile) || _editorWindow is not null) return;
         EditorStep = 0;
         _editorWindow = new ProfileEditorWindow { Owner = Application.Current.MainWindow, DataContext = this };
         _editorWindow.ShowDialog();
@@ -378,14 +374,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!IsInitialized) { HotkeyStatus = "请先点击“准备使用”，快捷键尚未启用"; return; }
         _systemHotkeys.Bind(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
         var id = 100;
-        foreach (var profile in Profiles.Where(profile => profile.IsInActivationPool))
+        foreach (var profile in Profiles.Where(IsParticipating))
         {
             BindAction(id++, profile, profile.StartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
             if (!profile.ToggleHotkey) BindAction(id++, profile, profile.StopHotkey, isStop: true, isToggle: false);
             if (!string.IsNullOrWhiteSpace(profile.AlternateStartHotkey))
                 BindAction(id++, profile, profile.AlternateStartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
         }
-        var poolCount = Profiles.Count(profile => profile.IsInActivationPool);
+        var poolCount = Profiles.Count(IsParticipating);
         HotkeyStatus = poolCount == 0
             ? "暂无参与触发的方案，未监听方案快捷键 · 按键继续传递"
             : $"正在监听 {poolCount} 个参与触发方案的快捷键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
@@ -406,7 +402,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void StartSequence()
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
-        if (!SelectedProfile.IsInActivationPool) { LastMessage = "请先将所选方案设为参与触发"; return; }
+        if (!IsParticipating(SelectedProfile)) { LastMessage = "请先将所选方案设为参与触发"; return; }
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
@@ -416,7 +412,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void QueueProfileActivation(KeyProfile source, string origin)
     {
-        if (!IsInitialized || _disposed || _captureMode != CaptureMode.None || !source.IsInActivationPool) return;
+        if (!IsInitialized || _disposed || _captureMode != CaptureMode.None || !IsParticipating(source)) return;
         try
         {
             ProfileOperations.ValidateForRepeat([source]);
@@ -588,7 +584,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         if (name == nameof(Profiles))
         {
-            PropertyChanged?.Invoke(this, new(nameof(AvailableGroups)));
+            PropertyChanged?.Invoke(this, new(nameof(SelectedProfileLabel)));
             PropertyChanged?.Invoke(this, new(nameof(ActivationPoolStatus)));
         }
     }

@@ -29,18 +29,17 @@ public sealed partial class MainViewModel
             Profiles = [.. Profiles, copy];
             OnPropertyChanged(nameof(Profiles)); SelectedProfile = copy;
             LastMessage = "已复制配置；点击保存写入本地";
-        }, _ => CanEdit && _validationErrors == 0);
-        DeleteProfileCommand = new RelayCommand(_ => DeleteProfile(), _ => CanEdit && Profiles.Count > 1);
+        }, _ => CanEdit && Profiles.Contains(SelectedProfile) && _validationErrors == 0);
+        DeleteProfileCommand = new RelayCommand(value => DeleteProfile(value as KeyProfile ?? SelectedProfile), value => CanEdit && Profiles.Contains(value as KeyProfile ?? SelectedProfile));
         ImportCommand = new RelayCommand(async _ => await TransferProfileAsync(true), _ => CanEdit && _validationErrors == 0);
-        ExportCommand = new RelayCommand(async _ => await TransferProfileAsync(false), _ => CanEdit && _validationErrors == 0);
+        ExportCommand = new RelayCommand(async _ => await TransferProfileAsync(false), _ => CanEdit && Profiles.Contains(SelectedProfile) && _validationErrors == 0);
         LastMessage = "点击“准备使用”后解锁功能；准备期间可能出现菜单弹出或鼠标短暂移动";
     }
 
-    private void DeleteProfile()
+    private async void DeleteProfile(KeyProfile profile)
     {
-        var profile = SelectedProfile;
         var index = Profiles.IndexOf(profile);
-        if (index < 0 || Profiles.Count <= 1 || !CanEdit) return;
+        if (index < 0 || !CanEdit) return;
         CancelCapture();
         _profileBusy = true;
         _systemHotkeys?.Clear();
@@ -48,16 +47,26 @@ public sealed partial class MainViewModel
         try
         {
             var answer = MessageBox.Show(Application.Current.MainWindow,
-                $"删除配置“{profile.Name}”？\n删除后请点击“保存配置”保留更改。", "删除配置",
+                $"删除配置“{profile.Name}”？\n此操作会立即保存，并从所有配置组移除该方案。", "删除配置",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
             if (answer != MessageBoxResult.Yes || _disposed) return;
-            Profiles = Profiles.Where(item => !ReferenceEquals(item, profile)).ToList();
+            var updated = new AppConfig
+            {
+                Profiles = Profiles.ToList(),
+                Groups = Groups.Select(group => new ProfileGroup { Id = group.Id, Name = group.Name, Participates = group.Participates, MemberIds = group.MemberIds.ToList() }).ToList()
+            };
+            ProfileParticipation.Remove(updated, profile);
+            await _store.SaveAsync(updated);
+            Profiles = updated.Profiles;
+            Groups = updated.Groups;
             SelectedStep = null;
-            OnPropertyChanged(nameof(Profiles));
-            SelectedProfile = Profiles[Math.Min(index, Profiles.Count - 1)];
-            LastMessage = "已删除配置；点击保存保留更改";
-            _logger.Info("用户删除了一个配置，尚未保存");
+            SelectedProfile = (Profiles.Count == 0 ? null : Profiles[Math.Min(index, Profiles.Count - 1)]) ?? new KeyProfile();
+            OnPropertyChanged(nameof(Profiles)); OnPropertyChanged(nameof(Groups));
+            LastMessage = "方案已删除并保存";
+            _logger.Info("用户删除方案并保存配置");
         }
+        catch (Exception exception) { _logger.Error("删除方案失败", exception); LastMessage = $"删除失败：{exception.Message}"; }
+
         finally
         {
             _profileBusy = false;
@@ -125,8 +134,13 @@ public sealed partial class MainViewModel
                 var config = await store.LoadAsync();
                 ProfileOperations.ValidateForRepeat(config.Profiles);
                 if (_disposed) return;
+                var idMap = config.Profiles.ToDictionary(profile => profile.Id, _ => Guid.NewGuid().ToString("N"));
+                foreach (var profile in config.Profiles) profile.Id = idMap[profile.Id];
+                foreach (var group in config.Groups) { group.Id = Guid.NewGuid().ToString("N"); group.MemberIds = group.MemberIds.Select(id => idMap[id]).ToList(); }
                 Profiles = [.. Profiles, .. config.Profiles];
-                OnPropertyChanged(nameof(Profiles)); SelectedProfile = config.Profiles[0];
+                Groups = [.. Groups, .. config.Groups];
+                OnPropertyChanged(nameof(Groups));
+                OnPropertyChanged(nameof(Profiles)); if (config.Profiles.Count > 0) SelectedProfile = config.Profiles[0];
                 LastMessage = $"已追加导入 {config.Profiles.Count} 个配置；点击保存写入本地";
             }
             else

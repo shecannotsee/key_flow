@@ -7,14 +7,26 @@
   </UniformGrid>
   <TextBlock Text="只保留一个步骤，它会按重复规则循环。" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSingleKeyMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
   <TextBlock Text="添加多个步骤，按列表顺序执行；整个列表作为一个流程重复。" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSequenceMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-  <TextBlock Text="每行设定本键释放后到下一键按下前的等待时间；最后一行控制回到首键前的等待时间。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSequenceMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+  <TextBlock Text="从上向下阅读：按键 → 等待 → 下一个按键。底部的等待后回到第一个按键。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSequenceMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
   <TextBlock Text="{Binding CaptureText}" Foreground="{StaticResource AccentBlue}" Margin="0,0,0,8"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding CaptureText}" Value="按下主键；组合键请先按住 Ctrl、Alt 或 Shift"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-  <DataGrid ItemsSource="{Binding SelectedProfile.Steps}" SelectedItem="{Binding SelectedStep}" Height="250" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" HeadersVisibility="Column" GridLinesVisibility="None" BorderThickness="0" Background="White" RowBackground="White" AlternatingRowBackground="#FAFBFD" RowHeight="48" SelectionMode="Single" SelectionUnit="FullRow" HorizontalScrollBarVisibility="Disabled">
-    <DataGrid.Columns>
-      <DataGridTemplateColumn Header="按键" Width="*" IsReadOnly="True"><DataGridTemplateColumn.CellTemplate><DataTemplate><Button Content="{Binding Key}" Command="{Binding DataContext.CaptureSequenceCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" Style="{StaticResource KeyCaptureButton}" HorizontalAlignment="Left" MinWidth="100" Margin="8,6"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-      <DataGridTemplateColumn Header="到下一键间隔" Width="170"><DataGridTemplateColumn.CellTemplate><DataTemplate><Grid Margin="8,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions><TextBox Text="{Binding WaitAfterMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}" HorizontalContentAlignment="Right" ToolTip="本键释放后，到下一行按下前等待的时间；最后一行等待后回到首键"/><TextBlock Grid.Column="1" Text="ms" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="{StaticResource TextSecondary}"/></Grid></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-    </DataGrid.Columns>
-  </DataGrid>
+  <ListBox ItemsSource="{Binding SelectedProfile.Steps}" SelectedItem="{Binding SelectedStep}" MaxHeight="350" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="4"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+    <ListBox.ItemTemplate><DataTemplate><StackPanel>
+      <Border CornerRadius="10" Padding="12" BorderThickness="2" Background="#F6F8FB">
+        <Border.Style><Style TargetType="Border"><Setter Property="BorderBrush" Value="Transparent"/><Style.Triggers><DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True"><Setter Property="BorderBrush" Value="#3478F6"/></DataTrigger></Style.Triggers></Style></Border.Style>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Button Content="{Binding Key}" Command="{Binding DataContext.CaptureSequenceCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource KeyCaptureButton}" HorizontalAlignment="Left" MinWidth="100"/>
+          <TextBlock Grid.Column="1" Text="按下并释放" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}"/>
+        </Grid>
+      </Border>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10">
+        <TextBlock Text="↓  等待" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" Margin="0,0,10,0"/>
+        <TextBox Width="90" Text="{Binding WaitAfterMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}" HorizontalContentAlignment="Right"/>
+        <TextBlock Text="毫秒  ↓" VerticalAlignment="Center" Margin="10,0,0,0" Foreground="{StaticResource TextSecondary}"/>
+      </StackPanel>
+    </StackPanel></DataTemplate></ListBox.ItemTemplate>
+  </ListBox>
+  <Border Background="#EDF3FF" CornerRadius="8" Padding="12"><TextBlock Text="↻ 回到第一个按键，开始下一轮（达到限时或停止后结束）" Foreground="#245BC5"/></Border>
   <WrapPanel Margin="0,10,0,0"><WrapPanel.Style><Style TargetType="WrapPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSequenceMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></WrapPanel.Style><Button Content="添加步骤" Command="{Binding AddStepCommand}"/><Button Content="删除步骤" Command="{Binding RemoveStepCommand}"/><Button Content="上移" Command="{Binding MoveStepUpCommand}"/><Button Content="下移" Command="{Binding MoveStepDownCommand}"/></WrapPanel>
 </StackPanel>
 </UserControl>
