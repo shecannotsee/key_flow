@@ -33,6 +33,10 @@ Windows DD 重复按键工具，.NET 8 / WPF。
 
 参见 [功能调研](docs/FEATURE_RESEARCH.md)、[初始化问题](docs/DD_INITIALIZATION_OPTIONS.md)、[热键研究](docs/HOTKEY_LIBRARY_RESEARCH.md)。研究文件保留历史记录，当前使用方法以本文为准。
 
+## 许可
+
+本项目采用 [MIT License](LICENSE)。第三方驱动、库及其他随附组件不在本项目许可范围内，请遵循其各自的许可和声明。
+
 ## 快速切换与单键开关
 
 准备完成后，配置以卡片列表显示，点击即可切换；当前卡片高亮，数量较多时可滚动。切换会清空步骤选择、取消未完成录入并重新绑定所有方案的快捷键。运行期间不可切换，先停止再选择配置。
