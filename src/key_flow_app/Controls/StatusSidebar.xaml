@@ -13,4 +13,5 @@
     <Button Grid.Column="2" Content="■  全部停止" Command="{Binding StopCommand}" Style="{StaticResource DestructiveButton}" Height="46" Margin="0"/>
   </Grid>
   <TextBlock Text="{Binding HotkeyStatus}" TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/>
+  <TextBlock Text="{Binding ActivationPoolStatus}" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0"/>
 </StackPanel></UserControl>

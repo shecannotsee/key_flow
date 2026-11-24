@@ -16,7 +16,7 @@ public sealed class HotkeyFallbackTests
                 using var window = new HwndSource(new HwndSourceParameters("hook-listener-test"));
                 using var hotkeys = new SystemHotkeys(window.Handle, _ => false, () => 1);
                 Assert.Equal("ready", hotkeys.ListenerStatus);
-                Assert.Equal(0, hotkeys.Register(10, 0x87));
+                Assert.True(hotkeys.Bind(10, 0x87));
                 var count = 0;
                 hotkeys.Pressed += _ => count++;
                 var hook = typeof(SystemHotkeys).GetMethod("OnHookKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -61,7 +61,7 @@ public sealed class HotkeyFallbackTests
                 using var window = new HwndSource(new HwndSourceParameters("focus-transition-test"));
                 nint foreground = 1;
                 using var hotkeys = new SystemHotkeys(window.Handle, _ => false, () => foreground);
-                Assert.Equal(0, hotkeys.Register(9, 0x87));
+                Assert.True(hotkeys.Bind(9, 0x87));
                 var count = 0;
                 var diagnostics = new List<string>();
                 hotkeys.Pressed += _ => count++;
@@ -95,7 +95,7 @@ public sealed class HotkeyFallbackTests
                 using var window = new HwndSource(new HwndSourceParameters("raw-input-test"));
                 using var hotkeys = new SystemHotkeys(window.Handle, _ => false);
                 Assert.Equal(0, hotkeys.RawInputError);
-                Assert.Equal(0, hotkeys.Register(8, 0x84, 6));
+                Assert.True(hotkeys.Bind(8, 0x84, 6));
                 var count = 0;
                 hotkeys.Pressed += _ => count++;
                 var input = typeof(SystemHotkeys).GetMethod("OnRawKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -127,7 +127,7 @@ public sealed class HotkeyFallbackTests
                 using var window = new HwndSource(new HwndSourceParameters("fallback-test"));
                 var down = new HashSet<uint>();
                 using var hotkeys = new SystemHotkeys(window.Handle, key => down.Contains(key));
-                Assert.Equal(0, hotkeys.Register(7, 0x85, 6)); // Ctrl+Shift+F22
+                Assert.True(hotkeys.Bind(7, 0x85, 6)); // Ctrl+Shift+F22
                 var count = 0;
                 hotkeys.Pressed += _ => count++;
                 var poll = typeof(SystemHotkeys).GetMethod("Poll", BindingFlags.NonPublic | BindingFlags.Instance)!;

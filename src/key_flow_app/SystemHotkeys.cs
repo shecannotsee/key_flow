@@ -9,7 +9,6 @@ namespace key_flow_app;
 public sealed class SystemHotkeys : IDisposable
 {
     private readonly HwndSource source;
-    private readonly HashSet<int> ids = [];
     private readonly Dictionary<int, (uint Key, uint Modifiers)> bindings = [];
     private readonly Dictionary<int, bool> held = [];
     private readonly Dictionary<int, long> lastSignal = [];
@@ -22,7 +21,7 @@ public sealed class SystemHotkeys : IDisposable
     public string ListenerStatus => listener.StartupError?.Message ?? (listener.IsReady ? "ready" : "unavailable");
     private readonly HashSet<uint> rawHeld = [];
     public int RawInputError => raw.RegistrationError;
-    public string LastSource { get; private set; } = "WM_HOTKEY";
+    public string LastSource { get; private set; } = "未检测";
     private bool disposed;
     private readonly Func<nint> foreground;
     private nint lastForeground;
@@ -36,7 +35,6 @@ public sealed class SystemHotkeys : IDisposable
         this.foreground = foreground ?? (() => InputDiagnostics.ForegroundHandle);
         lastForeground = this.foreground();
         source = HwndSource.FromHwnd(window) ?? throw new InvalidOperationException("绐楀彛灏氭湭鍒涘缓");
-        source.AddHook(OnMessage);
         raw = new RawKeyboardInput(window);
         raw.KeyChanged += OnRawKey;
         listener = new GlobalKeyboardListener();
@@ -48,26 +46,17 @@ public sealed class SystemHotkeys : IDisposable
         poll = new DispatcherTimer(TimeSpan.FromMilliseconds(15), DispatcherPriority.Input, (_, _) => Poll(), source.Dispatcher);
         poll.Start();
     }
-    public int Register(int id, uint key, uint modifiers = 0)
+    public bool Bind(int id, uint key, uint modifiers = 0)
     {
-        if (!RegisterHotKey(source.Handle, id, modifiers | 0x4000, key)) return Marshal.GetLastWin32Error();
-        ids.Add(id);
+        if (key == 0) return false;
         bindings[id] = (key, modifiers);
         held[id] = IsDown(key, modifiers);
-        return 0;
+        return true;
     }
     public void Clear()
     {
-        foreach (var id in ids) UnregisterHotKey(source.Handle, id);
-        ids.Clear();
         bindings.Clear(); held.Clear(); lastSignal.Clear();
         rawHeld.Clear(); hookHeld.Clear();
-    }
-    private nint OnMessage(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
-    {
-        if (message == 0x312 && ids.Contains((int)wParam))
-        { handled = true; Signal((int)wParam, "WM_HOTKEY"); }
-        return 0;
     }
     private void Poll()
     {
@@ -163,8 +152,6 @@ public sealed class SystemHotkeys : IDisposable
         LastSource = origin;
         Pressed?.Invoke(id);
     }
-    public void Dispose() { if (disposed) return; disposed = true; poll.Stop(); listener.Dispose(); raw.Dispose(); Clear(); source.RemoveHook(OnMessage); }
+    public void Dispose() { if (disposed) return; disposed = true; poll.Stop(); listener.Dispose(); raw.Dispose(); Clear(); }
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
-    [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint window, int id, uint modifiers, uint key);
-    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(nint window, int id);
 }

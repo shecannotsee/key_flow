@@ -14,6 +14,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private enum CaptureMode { None, Start, Stop, AlternateStart, Sequence }
     private readonly JsonConfigStore _store = new(AppPaths.Config);
     private readonly RuntimeController _runtime;
+    private readonly ActivationPool _activationPool;
+    private readonly Dictionary<int, (KeyProfile Profile, bool IsStop, bool IsToggle, KeyChord Chord)> _hotkeyActions = [];
+    private readonly Dictionary<KeyProfile, int> _activeProfileActivations = [];
     private KeyProfile _selectedProfile;
     private string _stateText = "尚未准备";
     private string _lastMessage = "未启动";
@@ -22,7 +25,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly ChordCapture _chordCapture = new();
     private string? _configLoadMessage;
     private SystemHotkeys? _systemHotkeys;
-    private bool _startRegistered, _stopRegistered, _registerOnRelease;
+    private bool _registerOnRelease;
     private bool _disposed;
     private readonly IInputLogger _logger;
     private readonly RunFeedback _feedback = new();
@@ -46,8 +49,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         _validationErrors = Math.Max(0, _validationErrors + delta);
         CommandManager.InvalidateRequerySuggested();
     }
-    private string _hotkeyStatus = "正在注册快捷键";
+    private string _hotkeyStatus = "正在监听快捷键";
     public string HotkeyStatus { get => _hotkeyStatus; private set { _hotkeyStatus = value; OnPropertyChanged(); } }
+    public string ActivationPoolStatus => _activationPool.ActiveCount == 0
+        ? "激活池空闲"
+        : $"激活池：{(_activationPool.IsBusy ? "执行中" : "等待中")} · {_activationPool.ActiveCount} 个方案";
 
 
     public List<KeyProfile> Profiles { get; private set; }
@@ -56,7 +62,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _selectedProfile;
         set
         {
-            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy || IsMonitoring) return;
+            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring) return;
             CancelCapture();
             _selectedProfile.PropertyChanged -= SelectedProfileChanged;
             _selectedProfile = value; SelectedStep = null; ColorStatus = "尚未检测";
@@ -79,7 +85,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     public string StartHotkeyLabel => UseToggleHotkey ? "开始 / 停止" : "开始";
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
-    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !IsMonitoring && !_profileBusy;
+    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !_activationPool.IsBusy && !IsMonitoring && !_profileBusy;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
@@ -141,6 +147,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
         _runtime = new RuntimeController(new SequenceRunner(sender, _screenReader), sender, logger);
+        _activationPool = new ActivationPool(ExecutePooledProfileAsync);
+        _activationPool.Changed += () => Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_disposed)
+            {
+                OnPropertyChanged(nameof(ActivationPoolStatus));
+                OnPropertyChanged(nameof(CanEdit));
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }));
+        _activationPool.Failed += exception => _logger.Error("激活池中的方案执行失败", exception);
         _runtime.StateChanged += state => Application.Current.Dispatcher.Invoke(() =>
         {
             var running = state == RuntimeState.Running;
@@ -151,13 +168,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsRunning));
                 OnPropertyChanged(nameof(WindowTitle));
             }
-            StateText = state == RuntimeState.Running ? "运行中" : "已停止";
+            StateText = state == RuntimeState.Running ? "运行中" : IsMonitoring ? $"监听中 · {_monitorCancellations.Count} 个方案" : "已停止";
             OnPropertyChanged(nameof(CanEdit));
             CommandManager.InvalidateRequerySuggested();
             LastMessage = _runtime.LastMessage.StartsWith("执行失败：", StringComparison.Ordinal)
                 ? "执行失败，已停止。请检查配置后重试，问题详情已记录" : _runtime.LastMessage;
         });
-        _logger.Info("启动：快捷键使用独立线程 MouseKeyHook / RegisterHotKey / Raw Input / 状态轮询，录入使用 WPF 窗口事件");
+        _logger.Info("启动：全局触发键使用 MouseKeyHook / Raw Input / 状态轮询被动监听并放行；录入使用 WPF 窗口事件");
         if (_configLoadMessage is not null) LastMessage = _configLoadMessage;
         SetupCommands();
         SetupAutomationCommands();
@@ -172,7 +189,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             SelectedProfile = preset;
             LastMessage = "已新建数字 8 配置，开始后立即重复";
         }, _ => CanEdit);
-        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || IsMonitoring);
+        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null && (!SelectedProfile.SequenceMode || SelectedProfile.Steps.Count > 2));
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
@@ -299,8 +316,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (_disposed || _captureMode != CaptureMode.None) return;
             _logger.Info($"热键 source={_systemHotkeys.LastSource}, id={id}; {InputDiagnostics.DescribeForeground()}");
-            if (id == 4 || (id == 1 && !(UseToggleHotkey && (_runtime.IsBusy || IsMonitoring)))) StartSequence();
-            else StopEverything("快捷键已停止");
+            if (id == 3) { StopEverything("紧急停止快捷键已触发"); return; }
+            if (!_hotkeyActions.TryGetValue(id, out var action)) return;
+            if (action.IsStop || _hotkeyActions.Values.Any(item => item.IsStop && item.Chord == action.Chord))
+            { StopEverything($"方案“{action.Profile.Name}”的停止键已触发"); return; }
+            if (action.IsToggle && IsProfileActive(action.Profile))
+            { StopEverything($"方案“{action.Profile.Name}”的开关键已触发"); return; }
+            if (action.Profile.ColorTriggerEnabled) { _ = StartMonitoringAsync(action.Profile); return; }
+            QueueProfileActivation(action.Profile, "键盘触发");
         };
         ConfigureHotkeys();
     }
@@ -309,28 +332,30 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_systemHotkeys is null || _disposed) return;
         _systemHotkeys.Clear();
+        _hotkeyActions.Clear();
         if (!IsInitialized) { HotkeyStatus = "请先点击“准备使用”，快捷键尚未启用"; return; }
-        _startRegistered = RegisterProfileHotkey(1, SelectedProfile.StartHotkey);
-        _stopRegistered = !UseToggleHotkey && RegisterProfileHotkey(2, SelectedProfile.StopHotkey);
-        var panicError = _systemHotkeys.Register(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
-        HotkeyStatus = $"开始：{SelectedProfile.StartHotkey} {(_startRegistered ? "✓" : "注册失败")} · 停止：{SelectedProfile.StopHotkey} {(_stopRegistered ? "✓" : "注册失败")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : $"注册失败 {panicError}")}";
-        if (UseToggleHotkey)
-            HotkeyStatus = $"单键开关：{SelectedProfile.StartHotkey} {(_startRegistered ? "✓" : "不可用，请换一个键")} · 紧急停止：{(panicError == 0 ? "Ctrl+Shift+F10" : "不可用")}";
-        if (!string.IsNullOrWhiteSpace(SelectedProfile.AlternateStartHotkey))
-            HotkeyStatus += $" · 备用开始：{SelectedProfile.AlternateStartHotkey} {(RegisterProfileHotkey(4, SelectedProfile.AlternateStartHotkey) ? "✓" : "注册失败")}";
+        _systemHotkeys.Bind(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
+        var id = 100;
+        foreach (var profile in Profiles)
+        {
+            BindAction(id++, profile, profile.StartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
+            if (!profile.ToggleHotkey) BindAction(id++, profile, profile.StopHotkey, isStop: true, isToggle: false);
+            if (!string.IsNullOrWhiteSpace(profile.AlternateStartHotkey))
+                BindAction(id++, profile, profile.AlternateStartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
+        }
+        HotkeyStatus = $"已被动监听 {Profiles.Count} 个方案的启停键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
         _logger.Info(HotkeyStatus);
     }
 
-    private bool RegisterProfileHotkey(int id, string key)
+    private void BindAction(int id, KeyProfile profile, string key, bool isStop, bool isToggle)
     {
-        if (string.IsNullOrWhiteSpace(key)) return false;
+        if (string.IsNullOrWhiteSpace(key)) return;
         KeyChord chord;
         try { chord = KeyChord.Parse(key); }
-        catch (ArgumentException e) { _logger.Error("快捷键无效", e); return false; }
-        if (chord.MainKey == "F12") return false;
-        var error = _systemHotkeys!.Register(id, (uint)chord.VirtualKey, chord.Modifiers);
-        if (error != 0) { LastMessage = $"热键 {key} 注册失败（{error}），使用 不可用，请重设"; _logger.Info(LastMessage); }
-        return error == 0;
+        catch (ArgumentException e) { _logger.Error($"方案“{profile.Name}”快捷键无效", e); return; }
+        if (chord.MainKey == "F12") return;
+        if (_systemHotkeys!.Bind(id, (uint)chord.VirtualKey, chord.Modifiers))
+            _hotkeyActions[id] = (profile, isStop, isToggle, chord);
     }
 
     private void StartSequence()
@@ -339,20 +364,71 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
-        if (SelectedProfile.ColorTriggerEnabled) { _ = StartMonitoringAsync(); return; }
-        var repeat = new KeyProfile { Name = SelectedProfile.Name, Enabled = true,
-            DurationSeconds = SelectedProfile.DurationSeconds, ColorCondition = SelectedProfile.ColorCondition.Copy(),
-            Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList() };
-        _logger.Info($"开始重复 mode=DD-HID, durationSeconds={repeat.DurationSeconds}, colorGate={repeat.ColorCondition.Enabled}, color=({repeat.ColorCondition.X},{repeat.ColorCondition.Y},{repeat.ColorCondition.Target},tolerance={repeat.ColorCondition.Tolerance}), steps={string.Join(",", repeat.Steps.Select(s => $"{s.Key}:interval={s.WaitAfterMs}ms,hold={s.HoldMs}ms"))}; {InputDiagnostics.DescribeForeground()}");
-        _runtime.Arm();
-        _ = _runtime.TriggerAsync(repeat);
+        if (SelectedProfile.ColorTriggerEnabled) { _ = StartMonitoringAsync(SelectedProfile); return; }
+        QueueProfileActivation(SelectedProfile, "界面开始");
+    }
+
+    private void QueueProfileActivation(KeyProfile source, string origin)
+    {
+        if (!IsInitialized || _disposed || _captureMode != CaptureMode.None) return;
+        try
+        {
+            ProfileOperations.ValidateForRepeat([source]);
+            var repeat = new KeyProfile
+            {
+                Name = source.Name, Enabled = true, DurationSeconds = source.DurationSeconds,
+                ColorCondition = source.ColorCondition.Copy(),
+                Steps = source.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs)
+                    { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList()
+            };
+            _logger.Info($"方案进入激活池 origin={origin}, name={repeat.Name}, durationSeconds={repeat.DurationSeconds}, steps={repeat.Steps.Count}");
+            var activation = _activationPool.EnqueueAsync(repeat);
+            _activeProfileActivations[source] = _activeProfileActivations.GetValueOrDefault(source) + 1;
+            _ = ObserveActivationAsync(source, activation);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException or InvalidOperationException)
+        { RejectStart(exception.Message); }
+    }
+
+    private async Task ObserveActivationAsync(KeyProfile source, Task activation)
+    {
+        try { await activation; }
+        catch (OperationCanceledException) { }
+        catch (Exception exception)
+        {
+            _logger.Error("激活池方案失败", exception);
+            if (!_disposed) LastMessage = "方案执行失败，已记录日志";
+        }
+        finally
+        {
+            var remaining = _activeProfileActivations.GetValueOrDefault(source) - 1;
+            if (remaining <= 0) _activeProfileActivations.Remove(source);
+            else _activeProfileActivations[source] = remaining;
+        }
+    }
+
+    private async Task ExecutePooledProfileAsync(KeyProfile profile, CancellationToken cancellationToken)
+    {
+        var dispatcher = Application.Current.Dispatcher;
+        using var registration = cancellationToken.Register(() =>
+        {
+            if (!dispatcher.HasShutdownStarted)
+                dispatcher.BeginInvoke(new Action(() => _runtime.Stop("激活池项目已取消")));
+        });
+        await dispatcher.InvokeAsync(async () =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _runtime.Arm();
+            await _runtime.TriggerAsync(profile);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_runtime.LastRunFailed) throw new InvalidOperationException("按键方案执行失败");
+        }).Task.Unwrap();
     }
 
     private void BeginCapture(CaptureMode mode)
     {
         if (!CanEdit) return;
         _systemHotkeys?.Clear();
-        _startRegistered = _stopRegistered = false;
         _chordCapture.Reset();
         _captureMode = mode;
         OnPropertyChanged(nameof(CaptureText));
@@ -428,8 +504,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _disposed = true;
         _automationCancellation.Cancel();
+        _activationPool.Dispose();
         _editorWindow?.Close();
-        _monitorCancellation?.Cancel();
+        foreach (var cancellation in _monitorCancellations.Values.ToArray()) cancellation.Cancel();
         _systemHotkeys?.Dispose();
         try { _runtime.Stop("程序退出"); }
         finally { _runtime.Shutdown(); }
