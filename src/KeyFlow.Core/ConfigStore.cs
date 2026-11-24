@@ -4,7 +4,7 @@ namespace KeyFlow.Core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -25,6 +25,7 @@ public sealed class JsonConfigStore(string path)
                 }
             config.Version = CurrentVersion;
         }
+        if (version == 2) config.Version = CurrentVersion;
         Validate(config);
         return config;
     }
@@ -59,6 +60,7 @@ public sealed class JsonConfigStore(string path)
             throw new InvalidDataException("配置至少需要一个配置档案");
         foreach (var profile in config.Profiles)
         {
+            AutomationValidation.Validate(profile);
             if (string.IsNullOrWhiteSpace(profile.Name)) throw new InvalidDataException("配置名称不能为空");
             if (profile.Steps is null || profile.Steps.Count == 0)
                 throw new InvalidDataException($"配置 {profile.Name} 没有按键步骤");

@@ -69,7 +69,7 @@ public sealed class PulseLoopTests
             await File.WriteAllTextAsync(path, old);
             var store = new JsonConfigStore(path);
             var config = await store.LoadAsync();
-            Assert.Equal(2, config.Version);
+            Assert.Equal(JsonConfigStore.CurrentVersion, config.Version);
             Assert.Equal(50, config.Profiles[0].Steps[0].HoldMs);
             Assert.Equal(130, config.Profiles[0].Steps[0].WaitAfterMs);
             Assert.Equal(old, await File.ReadAllTextAsync(path));

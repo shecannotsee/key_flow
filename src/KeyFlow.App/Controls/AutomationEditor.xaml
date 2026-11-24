@@ -1,0 +1,35 @@
+<UserControl x:Class="KeyFlow.App.Controls.AutomationEditor" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel>
+    <Border Background="#F6F8FB" CornerRadius="12" Padding="16">
+      <StackPanel>
+        <TextBlock Text="运行方式" FontWeight="SemiBold" Margin="0,0,0,12"/>
+        <WrapPanel>
+          <TextBlock Text="持续时间（秒）" VerticalAlignment="Center" Margin="0,0,10,8"/>
+          <TextBox Width="80" Margin="0,0,12,8" Text="{Binding SelectedProfile.DurationSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="0 表示持续运行；例如填 6，六秒后自动停止" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,0,8" Foreground="{StaticResource TextSecondary}"/>
+        </WrapPanel>
+        <WrapPanel Margin="0,4,0,0">
+          <TextBlock Text="备用开始键" VerticalAlignment="Center" Margin="0,0,12,0"/>
+          <Button Content="{Binding SelectedProfile.AlternateStartHotkey}" Command="{Binding CaptureAlternateStartCommand}" MinWidth="96" Style="{StaticResource KeyCaptureButton}" ToolTip="点击后按键录入；与主开始键执行同一配置"/>
+          <Button Content="清除" Command="{Binding ClearAlternateStartCommand}"/>
+        </WrapPanel>
+        <TextBlock Text="运行中再次按开始键不会重置计时。单键开关启用时，主开始键仍可停止。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0"/>
+      </StackPanel>
+    </Border>
+    <Expander Header="屏幕取色与激活判断" Margin="0,14,0,0">
+      <StackPanel Margin="0,12,0,0">
+        <TextBlock Text="在目标处显示激活颜色时取色。检测的是当前可见桌面，遮挡、缩放或窗口移动后需重新取色。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}"/>
+        <WrapPanel Margin="0,12,0,6"><Button Content="取色（3 秒后）" Command="{Binding PickColorCommand}"/><Button Content="检测一次" Command="{Binding TestColorCommand}"/></WrapPanel>
+        <WrapPanel>
+          <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="70" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.X, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="Y" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="70" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Y, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="目标色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="96" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Target, UpdateSourceTrigger=PropertyChanged}"/>
+          <TextBlock Text="容差" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="60" Margin="0,0,0,8" Text="{Binding SelectedProfile.ColorCondition.Tolerance, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+        </WrapPanel>
+        <CheckBox Content="仅在颜色匹配时输出按键" IsChecked="{Binding SelectedProfile.ColorCondition.Enabled}" Margin="0,6"/>
+        <TextBlock Text="未匹配时等待，持续时间仍计时。读取失败会停止执行。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}"/>
+        <TextBlock Text="{Binding ColorStatus}" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="{StaticResource AccentBlue}"/>
+      </StackPanel>
+    </Expander>
+  </StackPanel>
+</UserControl>

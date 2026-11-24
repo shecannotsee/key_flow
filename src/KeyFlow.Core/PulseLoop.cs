@@ -6,7 +6,7 @@ namespace KeyFlow.Core;
 public static class PulseLoop
 {
     public static void Run(IKeySender sender, IReadOnlyList<KeyStep> steps, CancellationToken stop,
-        Action<long>? onClick = null)
+        Action<long>? onClick = null, Func<bool>? canPress = null)
     {
         if (steps.Count == 0) throw new ArgumentException("序列不能为空", nameof(steps));
         foreach (var step in steps)
@@ -18,6 +18,12 @@ public static class PulseLoop
         {
             foreach (var step in steps)
             {
+                stop.ThrowIfCancellationRequested();
+                while (canPress is not null && !canPress())
+                {
+                    stop.WaitHandle.WaitOne(50);
+                    stop.ThrowIfCancellationRequested();
+                }
                 stop.ThrowIfCancellationRequested();
                 var started = clock.Elapsed.TotalMilliseconds;
                 try

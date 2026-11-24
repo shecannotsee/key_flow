@@ -25,6 +25,11 @@ public sealed class KeyProfile : INotifyPropertyChanged
     private string _startHotkey = "F8";
     private string _stopHotkey = "F9";
     private bool _toggleHotkey;
+    private double _durationSeconds;
+    private string _alternateStartHotkey = "";
+    public double DurationSeconds { get => _durationSeconds; set { _durationSeconds = value; OnPropertyChanged(); } }
+    public string AlternateStartHotkey { get => _alternateStartHotkey; set { _alternateStartHotkey = value; OnPropertyChanged(); } }
+    public ColorCondition ColorCondition { get; set; } = new();
     public bool ToggleHotkey { get => _toggleHotkey; set { _toggleHotkey = value; OnPropertyChanged(); } }
     private List<KeyStep> _steps = [];
     private bool _enabled;
@@ -39,7 +44,7 @@ public sealed class KeyProfile : INotifyPropertyChanged
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
     public List<KeyProfile> Profiles { get; set; } = [];
 }
 
@@ -64,13 +69,24 @@ public sealed class NullInputLogger : IInputLogger
     public void Error(string message, Exception exception) { }
 }
 
-public sealed class SequenceRunner(IKeySender sender)
+public sealed class SequenceRunner(IKeySender sender, IScreenColorReader? screen = null)
 {
-    public Task RunAsync(KeyProfile profile, CancellationToken cancellationToken)
+    public async Task RunAsync(KeyProfile profile, CancellationToken cancellationToken)
     {
         Validate(profile);
         var steps = profile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = step.HoldMs }).ToArray();
-        return Task.Run(() => PulseLoop.Run(sender, steps, cancellationToken), cancellationToken);
+        AutomationValidation.Validate(profile);
+        var condition = profile.ColorCondition.Copy();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (profile.DurationSeconds > 0) deadline.CancelAfter(TimeSpan.FromSeconds(profile.DurationSeconds));
+        try
+        {
+            await Task.Run(() => PulseLoop.Run(sender, steps, deadline.Token, canPress: condition.Enabled
+                ? () => ColorMatcher.Matches((screen ?? throw new InvalidOperationException("未提供屏幕读取服务")).Read(condition.X, condition.Y), condition)
+                : null), deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) { }
+
     }
 
     private static void Validate(KeyProfile profile)
@@ -105,6 +121,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
         try
         {
             await runner.RunAsync(profile, _runCancellation.Token);
+            SetState(RuntimeState.Stopped, "执行完成，已自动停止");
         }
         catch (OperationCanceledException)
         {
