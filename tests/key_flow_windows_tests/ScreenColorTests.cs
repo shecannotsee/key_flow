@@ -104,9 +104,10 @@ public sealed class ScreenColorTests
                 Assert.True(ColorMatcher.Matches(actual, new() { Target = "#20A0E0", Tolerance = 2 }), $"Actual {actual}");
                 // The temporary hook consumes this test click; sample the fixed region, not the cursor location.
                 using var stop = new CancellationTokenSource(3000);
-                using var ready = new ManualResetEventSlim();
-                var capture = ScreenClickCapture.CaptureAsync(new ColorCondition { X = (int)position.X, Y = (int)position.Y, Width = 5, Height = 5 }, stop.Token, ready.Set);
-                Assert.True(ready.Wait(TimeSpan.FromSeconds(2)));
+                var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var capture = ScreenClickCapture.CaptureAsync(new ColorCondition { X = (int)position.X, Y = (int)position.Y, Width = 5, Height = 5 }, stop.Token, () => ready.TrySetResult());
+                var first = Task.WhenAny(ready.Task, capture).WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+                if (first == capture) capture.GetAwaiter().GetResult();
                 mouse_event(0x0002, 0, 0, 0, 0);
                 mouse_event(0x0004, 0, 0, 0, 0);
                 var sampled = capture.WaitAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();

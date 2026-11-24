@@ -47,13 +47,24 @@ public sealed class ProfileOperationsTests
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
         try
         {
-            var config = new AppConfig { Profiles = [new KeyProfile { Name = "Test", Steps = [new("D8", 80), new("D1", 130)] }] };
+            var config = new AppConfig { Profiles = [new KeyProfile { Name = "Test", SequenceMode = true, Steps = [new("D8", 80), new("D1", 130)] }] };
             await new JsonConfigStore(path).SaveAsync(config);
             var imported = await new JsonConfigStore(path).LoadAsync();
             ProfileOperations.ValidateForRepeat(imported.Profiles);
             Assert.Equal(130, imported.Profiles[0].Steps[1].WaitAfterMs);
+            Assert.True(imported.Profiles[0].SequenceMode);
         }
         finally { File.Delete(path); }
+    }
+    [Fact]
+    public void WorkflowModeMustMatchNumberOfSteps()
+    {
+        var profile = new KeyProfile { Steps = [new("D8"), new("D1")] };
+        Assert.Throws<InvalidDataException>(() => ProfileOperations.ValidateForRepeat([profile]));
+        profile.SequenceMode = true;
+        ProfileOperations.ValidateForRepeat([profile]);
+        profile.Steps = [profile.Steps[0]];
+        Assert.Throws<InvalidDataException>(() => ProfileOperations.ValidateForRepeat([profile]));
     }
     [Fact]
     public void ExplicitInitializationDoesNotSendKeysAndRunsOnce()

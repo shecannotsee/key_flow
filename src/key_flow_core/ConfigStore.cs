@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -25,7 +25,10 @@ public sealed class JsonConfigStore(string path)
                 }
             config.Version = CurrentVersion;
         }
-        if (version is 2 or 3) config.Version = CurrentVersion;
+        if (version is 2 or 3 or 4) config.Version = CurrentVersion;
+        if (version < CurrentVersion)
+            foreach (var profile in config.Profiles ?? [])
+                profile.SequenceMode = profile.Steps?.Count > 1;
         Validate(config);
         return config;
     }

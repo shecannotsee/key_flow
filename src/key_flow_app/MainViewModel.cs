@@ -28,10 +28,19 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly RunFeedback _feedback = new();
     private bool _isRunning;
     private bool _isPinned;
+    private ProfileEditorWindow? _editorWindow;
+    private int _editorStep;
     private int _validationErrors;
     public bool IsRunning => _isRunning;
     public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
-    public string WindowTitle => IsRunning ? "● 正在重复 — key_flow" : IsMonitoring ? "◉ 监听中 — key_flow" : "■ 已停止 — key_flow";
+    public string WindowTitle => IsRunning ? "正在运行 — key_flow" : IsMonitoring ? "正在监听 — key_flow" : "已停止 — key_flow";
+    public int EditorStep { get => _editorStep; private set { _editorStep = Math.Clamp(value, 0, 2); OnPropertyChanged(); OnPropertyChanged(nameof(IsFirstEditorStep)); OnPropertyChanged(nameof(IsLastEditorStep)); } }
+    public bool IsFirstEditorStep => EditorStep == 0;
+    public bool IsLastEditorStep => EditorStep == 2;
+    public bool IsSingleKeyMode => !SelectedProfile.SequenceMode;
+    public bool IsSequenceMode => SelectedProfile.SequenceMode;
+    public bool IsUnlimitedMode => SelectedProfile.DurationSeconds <= 0;
+    public bool IsTimedMode => SelectedProfile.DurationSeconds > 0;
     public void ChangeValidationErrors(int delta)
     {
         _validationErrors = Math.Max(0, _validationErrors + delta);
@@ -49,9 +58,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy || IsMonitoring) return;
             CancelCapture();
+            _selectedProfile.PropertyChanged -= SelectedProfileChanged;
             _selectedProfile = value; SelectedStep = null; ColorStatus = "尚未检测";
+            _selectedProfile.PropertyChanged += SelectedProfileChanged;
             OnPropertyChanged(); OnPropertyChanged(nameof(UseToggleHotkey));
             OnPropertyChanged(nameof(StartHotkeyLabel)); ConfigureHotkeys();
+            OnPropertyChanged(nameof(IsSingleKeyMode)); OnPropertyChanged(nameof(IsSequenceMode));
+            OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
         }
     }
     public bool UseToggleHotkey
@@ -70,6 +83,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
+    public ICommand OpenEditorCommand { get; private set; } = null!;
+    public ICommand CloseEditorCommand { get; private set; } = null!;
+    public ICommand NavigateEditorCommand { get; private set; } = null!;
+    public ICommand PreviousEditorStepCommand { get; private set; } = null!;
+    public ICommand NextEditorStepCommand { get; private set; } = null!;
+    public ICommand SetWorkflowModeCommand { get; private set; } = null!;
+    public ICommand SetRepeatModeCommand { get; private set; } = null!;
     public ICommand ArmCommand { get; }
     public ICommand StopCommand { get; }
     public ICommand AddStepCommand { get; }
@@ -99,6 +119,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             ? loaded.Profiles
             : [new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] }];
         _selectedProfile = Profiles[0];
+        _selectedProfile.PropertyChanged += SelectedProfileChanged;
         var logger = _logger = new FileInputLogger(AppPaths.Log);
         var arguments = Environment.GetCommandLineArgs();
         var ddIndex = Array.FindIndex(arguments, arg => arg.Equals("--dd", StringComparison.OrdinalIgnoreCase));
@@ -141,6 +162,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         SetupCommands();
         SetupAutomationCommands();
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
+        SetupEditorCommands();
         ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
         {
@@ -152,7 +174,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }, _ => CanEdit);
         StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
-        RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null);
+        RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null && (!SelectedProfile.SequenceMode || SelectedProfile.Steps.Count > 2));
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
         MoveStepDownCommand = new RelayCommand(_ => MoveStep(1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) < SelectedProfile.Steps.Count - 1);
         CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start), _ => CanEdit);
@@ -167,8 +189,73 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             ProfileOperations.ValidateForRepeat(Profiles);
             await _store.SaveAsync(new AppConfig { Version = JsonConfigStore.CurrentVersion, Profiles = Profiles });
             LastMessage = "配置已保存";
+            _editorWindow?.Close();
         }
         catch (Exception exception) { LastMessage = $"保存失败：{exception.Message}"; }
+    }
+
+    private void SetupEditorCommands()
+    {
+        OpenEditorCommand = new RelayCommand(_ => OpenEditor(), _ => CanEdit);
+        CloseEditorCommand = new RelayCommand(_ => _editorWindow?.Close());
+        NavigateEditorCommand = new RelayCommand(value => { if (int.TryParse(value?.ToString(), out var step)) EditorStep = step; }, _ => CanEdit);
+        PreviousEditorStepCommand = new RelayCommand(_ => EditorStep--, _ => CanEdit && EditorStep > 0);
+        NextEditorStepCommand = new RelayCommand(_ => EditorStep++, _ => CanEdit && EditorStep < 2);
+        SetWorkflowModeCommand = new RelayCommand(SetWorkflowMode, _ => CanEdit);
+        SetRepeatModeCommand = new RelayCommand(SetRepeatMode, _ => CanEdit);
+    }
+
+    private void SelectedProfileChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(KeyProfile.DurationSeconds) or null)
+        {
+            OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
+        }
+        if (e.PropertyName is nameof(KeyProfile.SequenceMode) or null)
+        {
+            OnPropertyChanged(nameof(IsSingleKeyMode)); OnPropertyChanged(nameof(IsSequenceMode));
+        }
+    }
+
+    private void OpenEditor()
+    {
+        if (!CanEdit || _editorWindow is not null) return;
+        EditorStep = 0;
+        _editorWindow = new ProfileEditorWindow { Owner = Application.Current.MainWindow, DataContext = this };
+        _editorWindow.ShowDialog();
+    }
+
+    public void EditorClosed(ProfileEditorWindow window)
+    {
+        if (ReferenceEquals(_editorWindow, window)) _editorWindow = null;
+        CancelCapture();
+    }
+
+    private void SetWorkflowMode(object? parameter)
+    {
+        var sequence = string.Equals(parameter?.ToString(), "sequence", StringComparison.OrdinalIgnoreCase);
+        if (sequence == SelectedProfile.SequenceMode) return;
+        if (!sequence && SelectedProfile.Steps.Count > 1)
+        {
+            var answer = MessageBox.Show(_editorWindow ?? Application.Current.MainWindow,
+                "切换为单键重复会保留第一步并移除其余步骤。是否继续？", "切换流程类型",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes) { OnPropertyChanged(nameof(IsSingleKeyMode)); OnPropertyChanged(nameof(IsSequenceMode)); return; }
+        }
+        SelectedProfile.SequenceMode = sequence;
+        if (sequence && SelectedProfile.Steps.Count == 1)
+            SelectedProfile.Steps = [.. SelectedProfile.Steps, new KeyStep(SelectedProfile.Steps[0].Key, SelectedProfile.Steps[0].WaitAfterMs) { HoldMs = SelectedProfile.Steps[0].HoldMs }];
+        else if (!sequence && SelectedProfile.Steps.Count > 1)
+            SelectedProfile.Steps = [SelectedProfile.Steps[0]];
+        SelectedStep = null;
+        OnPropertyChanged(nameof(SelectedProfile)); OnPropertyChanged(nameof(IsSingleKeyMode)); OnPropertyChanged(nameof(IsSequenceMode));
+    }
+
+    private void SetRepeatMode(object? parameter)
+    {
+        SelectedProfile.DurationSeconds = string.Equals(parameter?.ToString(), "timed", StringComparison.OrdinalIgnoreCase)
+            ? Math.Max(1, SelectedProfile.DurationSeconds) : 0;
+        OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
     }
 
     public void HandleKeyCode(int virtualKey, uint modifiers = 0)
@@ -317,7 +404,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void RemoveStep()
     {
-        if (SelectedStep is null) return;
+        if (SelectedStep is null || (SelectedProfile.SequenceMode && SelectedProfile.Steps.Count <= 2)) return;
         SelectedProfile.Steps = SelectedProfile.Steps.Where(step => !ReferenceEquals(step, SelectedStep)).ToList();
         SelectedStep = null;
         OnPropertyChanged(nameof(SelectedProfile));
@@ -341,6 +428,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _disposed = true;
         _automationCancellation.Cancel();
+        _editorWindow?.Close();
         _monitorCancellation?.Cancel();
         _systemHotkeys?.Dispose();
         try { _runtime.Stop("程序退出"); }

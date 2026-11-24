@@ -2,7 +2,7 @@
 <StackPanel>
   <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock Text="我的配置" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
-    <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Content="＋ 新建" Command="{Binding UseVerifiedPresetCommand}"/><Button Content="保存配置" Command="{Binding SaveCommand}" Background="#EAF1FF" Foreground="#245BC5" Margin="0"/></StackPanel>
+    <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Content="＋ 新建方案" Command="{Binding UseVerifiedPresetCommand}"/><Button Content="保存全部" Command="{Binding SaveCommand}" Background="#EAF1FF" Foreground="#245BC5" Margin="0"/></StackPanel>
   </Grid>
   <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" MaxHeight="150" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,0,4">
     <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>

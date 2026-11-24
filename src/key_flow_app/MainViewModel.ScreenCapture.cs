@@ -21,7 +21,7 @@ public sealed partial class MainViewModel
     private async Task CaptureScreenAsync(bool? active)
     {
         var condition = SelectedProfile.ColorCondition;
-        var window = Application.Current.MainWindow;
+        var window = (Window?)_editorWindow ?? Application.Current.MainWindow;
         var previousState = window.WindowState;
         CancelCapture();
         _profileBusy = true;

@@ -5,8 +5,8 @@
       <ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
       <controls:PreparationCard VerticalAlignment="Top"/>
     </ScrollViewer>
-    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger><DataTrigger Binding="{Binding IsRunning}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
-      <Border Background="{StaticResource SurfaceBackground}" CornerRadius="16" Padding="20"><controls:ProfileEditor/></Border>
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><ScrollViewer.Style><Style TargetType="ScrollViewer"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></ScrollViewer.Style>
+      <Border Background="{StaticResource SurfaceBackground}" CornerRadius="16" Padding="20"><StackPanel IsEnabled="{Binding CanEdit}"><controls:ProfileSelector/><Button Content="编辑所选方案" Command="{Binding OpenEditorCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" Style="{StaticResource PrimaryButton}"/></StackPanel></Border>
     </ScrollViewer>
     <controls:StatusSidebar Grid.Row="1" Margin="0,0,0,16">
       <controls:StatusSidebar.Style><Style TargetType="controls:StatusSidebar"><Style.Triggers><DataTrigger Binding="{Binding IsInitialized}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></controls:StatusSidebar.Style>

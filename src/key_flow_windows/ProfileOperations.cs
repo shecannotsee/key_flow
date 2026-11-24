@@ -11,7 +11,8 @@ public static class ProfileOperations
         ColorTriggerEnabled = profile.ColorTriggerEnabled, TriggerDebounceMs = profile.TriggerDebounceMs,
         DurationSeconds = profile.DurationSeconds, AlternateStartHotkey = profile.AlternateStartHotkey,
         ColorCondition = profile.ColorCondition.Copy(),
-        Steps = profile.Steps.Select(s => new KeyStep(s.Key, s.WaitAfterMs) { HoldMs = s.HoldMs }).ToList()
+        Steps = profile.Steps.Select(s => new KeyStep(s.Key, s.WaitAfterMs) { HoldMs = s.HoldMs }).ToList(),
+        SequenceMode = profile.SequenceMode
     };
 
     public static void ValidateForRepeat(IEnumerable<KeyProfile> profiles)
@@ -20,6 +21,8 @@ public static class ProfileOperations
         {
             if (string.IsNullOrWhiteSpace(p.Name) || p.Steps is null || p.Steps.Count == 0)
                 throw new InvalidDataException("配置名称或按键序列为空");
+            if ((!p.SequenceMode && p.Steps.Count != 1) || (p.SequenceMode && p.Steps.Count < 2))
+                throw new InvalidDataException("单键重复需要一个按键，顺序执行至少需要两个按键");
             AutomationValidation.Validate(p);
             KeyChord start, stop;
             try

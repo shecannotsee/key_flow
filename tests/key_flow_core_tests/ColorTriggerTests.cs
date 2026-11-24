@@ -146,7 +146,8 @@ public sealed class ColorTriggerTests
         {
             await File.WriteAllTextAsync(path, """{"Version":3,"Profiles":[{"Name":"old","Steps":[{"Key":"E"}]}]}""");
             var store = new JsonConfigStore(path); var config = await store.LoadAsync();
-            Assert.Equal(4, config.Version); Assert.False(config.Profiles[0].ColorTriggerEnabled);
+            Assert.Equal(JsonConfigStore.CurrentVersion, config.Version); Assert.False(config.Profiles[0].ColorTriggerEnabled);
+            Assert.False(config.Profiles[0].SequenceMode);
             var p = config.Profiles[0]; p.ColorTriggerEnabled = true; p.TriggerDebounceMs = 250; p.DurationSeconds = 6;
             await store.SaveAsync(config);
             var loaded = (await store.LoadAsync()).Profiles[0];
@@ -157,5 +158,21 @@ public sealed class ColorTriggerTests
             Assert.Throws<InvalidDataException>(() => AutomationValidation.Validate(p));
         }
         finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Theory]
+    [InlineData(4, 1, false)]
+    [InlineData(4, 2, true)]
+    public async Task OlderConfigurationsInferWorkflowModeFromStepCount(int version, int stepCount, bool sequenceMode)
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            var steps = string.Join(",", Enumerable.Range(0, stepCount).Select(index => $"{{\"Key\":\"D{index + 1}\"}}"));
+            await File.WriteAllTextAsync(path, $"{{\"Version\":{version},\"Profiles\":[{{\"Name\":\"legacy\",\"Steps\":[{steps}]}}]}}");
+            var profile = (await new JsonConfigStore(path).LoadAsync()).Profiles[0];
+            Assert.Equal(sequenceMode, profile.SequenceMode);
+        }
+        finally { File.Delete(path); }
     }
 }

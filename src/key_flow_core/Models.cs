@@ -36,11 +36,13 @@ public sealed class KeyProfile : INotifyPropertyChanged
     public ColorCondition ColorCondition { get; set; } = new();
     public bool ToggleHotkey { get => _toggleHotkey; set { _toggleHotkey = value; OnPropertyChanged(); } }
     private List<KeyStep> _steps = [];
+    private bool _sequenceMode;
     private bool _enabled;
     public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
     public string StartHotkey { get => _startHotkey; set { _startHotkey = value; OnPropertyChanged(); } }
     public string StopHotkey { get => _stopHotkey; set { _stopHotkey = value; OnPropertyChanged(); } }
     public List<KeyStep> Steps { get => _steps; set { _steps = value; OnPropertyChanged(); } }
+    public bool SequenceMode { get => _sequenceMode; set { _sequenceMode = value; OnPropertyChanged(); } }
     public bool Enabled { get => _enabled; set { _enabled = value; OnPropertyChanged(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
@@ -48,7 +50,7 @@ public sealed class KeyProfile : INotifyPropertyChanged
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 4;
+    public int Version { get; set; } = 5;
     public List<KeyProfile> Profiles { get; set; } = [];
 }
 
