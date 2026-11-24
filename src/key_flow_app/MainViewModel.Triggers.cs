@@ -22,7 +22,7 @@ public sealed partial class MainViewModel
 
     private async Task StartMonitoringAsync(KeyProfile source)
     {
-        if (!IsInitialized || _disposed || _profileBusy || _monitorCancellations.ContainsKey(source)) return;
+        if (!IsInitialized || _disposed || _profileBusy || !source.IsInActivationPool || _monitorCancellations.ContainsKey(source)) return;
         try { ProfileOperations.ValidateForRepeat([source]); }
         catch (InvalidDataException exception) { RejectStart(exception.Message); return; }
 
@@ -36,7 +36,7 @@ public sealed partial class MainViewModel
         CommandManager.InvalidateRequerySuggested();
         StateText = IsMonitoring ? $"监听中 · {_monitorCancellations.Count} 个方案" : "监听中";
         LastMessage = $"方案“{profile.Name}”等待色块先恢复未激活，再次激活时执行";
-        _logger.Info($"颜色规则开启 name={profile.Name}, debounceMs={profile.TriggerDebounceMs}, duration={profile.DurationSeconds}s, point=({profile.ColorCondition.X},{profile.ColorCondition.Y}), target={profile.ColorCondition.Target}, tolerance={profile.ColorCondition.Tolerance}");
+        _logger.Info($"颜色规则开启 name={profile.Name}, debounceMs={profile.TriggerDebounceMs}, duration={profile.TotalDurationSeconds:F3}s, point=({profile.ColorCondition.X},{profile.ColorCondition.Y}), target={profile.ColorCondition.Target}, tolerance={profile.ColorCondition.Tolerance}");
         try
         {
             await Task.Run(() => new ColorTriggerMonitor(_screenReader).RunAsync(

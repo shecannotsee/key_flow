@@ -7,9 +7,11 @@ public static class ProfileOperations
     public static KeyProfile Copy(KeyProfile profile, bool suffix = true) => new()
     {
         Name = profile.Name + (suffix ? " 副本" : ""), Enabled = profile.Enabled,
+        IsInActivationPool = profile.IsInActivationPool,
         StartHotkey = profile.StartHotkey, StopHotkey = profile.StopHotkey, ToggleHotkey = profile.ToggleHotkey,
         ColorTriggerEnabled = profile.ColorTriggerEnabled, TriggerDebounceMs = profile.TriggerDebounceMs,
-        DurationSeconds = profile.DurationSeconds, AlternateStartHotkey = profile.AlternateStartHotkey,
+        DurationSeconds = profile.DurationSeconds, DurationMilliseconds = profile.DurationMilliseconds,
+        AlternateStartHotkey = profile.AlternateStartHotkey,
         ColorCondition = profile.ColorCondition.Copy(),
         Steps = profile.Steps.Select(s => new KeyStep(s.Key, s.WaitAfterMs) { HoldMs = s.HoldMs }).ToList(),
         SequenceMode = profile.SequenceMode

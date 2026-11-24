@@ -25,6 +25,7 @@ public sealed partial class MainViewModel
         DuplicateProfileCommand = new RelayCommand(_ =>
         {
             var copy = ProfileOperations.Copy(SelectedProfile);
+            copy.IsInActivationPool = false;
             Profiles = [.. Profiles, copy];
             OnPropertyChanged(nameof(Profiles)); SelectedProfile = copy;
             LastMessage = "已复制配置；点击保存写入本地";

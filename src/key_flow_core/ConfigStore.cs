@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 6;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -25,10 +25,21 @@ public sealed class JsonConfigStore(string path)
                 }
             config.Version = CurrentVersion;
         }
-        if (version is 2 or 3 or 4) config.Version = CurrentVersion;
+        if (version is 2 or 3 or 4 or 5) config.Version = CurrentVersion;
         if (version < CurrentVersion)
+        {
             foreach (var profile in config.Profiles ?? [])
+            {
                 profile.SequenceMode = profile.Steps?.Count > 1;
+                var seconds = Math.Floor(profile.DurationSeconds);
+                var milliseconds = (int)Math.Round((profile.DurationSeconds - seconds) * 1000, MidpointRounding.AwayFromZero);
+                if (milliseconds >= 1000) { seconds++; milliseconds = 0; }
+                profile.DurationSeconds = seconds;
+                profile.DurationMilliseconds = milliseconds;
+                profile.IsInActivationPool = false;
+            }
+            if (config.Profiles is { Count: > 0 }) config.Profiles[0].IsInActivationPool = true;
+        }
         Validate(config);
         return config;
     }
@@ -51,7 +62,7 @@ public sealed class JsonConfigStore(string path)
     private static AppConfig CreateDefault() => new()
     {
         Version = CurrentVersion,
-        Profiles = [new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] }]
+        Profiles = [new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] }]
     };
 
     private static void Validate(AppConfig config)

@@ -42,8 +42,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool IsLastEditorStep => EditorStep == 2;
     public bool IsSingleKeyMode => !SelectedProfile.SequenceMode;
     public bool IsSequenceMode => SelectedProfile.SequenceMode;
-    public bool IsUnlimitedMode => SelectedProfile.DurationSeconds <= 0;
-    public bool IsTimedMode => SelectedProfile.DurationSeconds > 0;
+    public bool IsUnlimitedMode => SelectedProfile.TotalDurationSeconds <= 0;
+    public bool IsTimedMode => SelectedProfile.TotalDurationSeconds > 0;
     public void ChangeValidationErrors(int delta)
     {
         _validationErrors = Math.Max(0, _validationErrors + delta);
@@ -51,9 +51,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     private string _hotkeyStatus = "正在监听快捷键";
     public string HotkeyStatus { get => _hotkeyStatus; private set { _hotkeyStatus = value; OnPropertyChanged(); } }
-    public string ActivationPoolStatus => _activationPool.ActiveCount == 0
-        ? "激活池空闲"
-        : $"激活池：{(_activationPool.IsBusy ? "执行中" : "等待中")} · {_activationPool.ActiveCount} 个方案";
+    public string ActivationPoolStatus
+    {
+        get
+        {
+            var members = Profiles.Count(profile => profile.IsInActivationPool);
+            return members == 0
+                ? "激活池为空 · 没有方案可被快捷键触发"
+                : $"激活池：{members} 个可触发方案 · " + (_activationPool.ActiveCount == 0 ? "空闲" : $"{_activationPool.ActiveCount} 个正在执行或等待");
+        }
+    }
 
 
     public List<KeyProfile> Profiles { get; private set; }
@@ -106,6 +113,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public ICommand UseVerifiedPresetCommand { get; }
+    public ICommand ToggleActivationPoolCommand { get; private set; } = null!;
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "按下主键；组合键请先按住 Ctrl、Alt 或 Shift";
 
     public MainViewModel()
@@ -118,12 +126,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException)
         {
-            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] }] };
+            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] }] };
             _configLoadMessage = $"配置加载失败，已使用默认配置：{exception.Message}";
         }
         Profiles = loaded.Profiles.Count > 0
             ? loaded.Profiles
-            : [new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] }];
+            : [new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] }];
         _selectedProfile = Profiles[0];
         _selectedProfile.PropertyChanged += SelectedProfileChanged;
         var logger = _logger = new FileInputLogger(AppPaths.Log);
@@ -180,15 +188,25 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         SetupAutomationCommands();
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
         SetupEditorCommands();
-        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
+        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && SelectedProfile.IsInActivationPool && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
         {
-            var preset = new KeyProfile { Name = "数字 8 · 80ms", Steps = [new("D8", 80)] };
+            var preset = new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] };
             Profiles = [.. Profiles, preset];
-            OnPropertyChanged(nameof(Profiles));
+            OnPropertyChanged(nameof(Profiles)); OnPropertyChanged(nameof(ActivationPoolStatus));
             SelectedProfile = preset;
             LastMessage = "已新建数字 8 配置，开始后立即重复";
         }, _ => CanEdit);
+        ToggleActivationPoolCommand = new RelayCommand(parameter =>
+        {
+            if (parameter is not KeyProfile profile || !CanEdit) return;
+            profile.IsInActivationPool = !profile.IsInActivationPool;
+            ConfigureHotkeys();
+            OnPropertyChanged(nameof(ActivationPoolStatus));
+            LastMessage = profile.IsInActivationPool
+                ? $"方案“{profile.Name}”已加入激活池，可由热键触发；保存配置以保留设置"
+                : $"方案“{profile.Name}”已移出激活池，不再响应该方案的热键；保存配置以保留设置";
+        }, parameter => CanEdit && parameter is KeyProfile profile && Profiles.Contains(profile));
         StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null && (!SelectedProfile.SequenceMode || SelectedProfile.Steps.Count > 2));
@@ -224,7 +242,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void SelectedProfileChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(KeyProfile.DurationSeconds) or null)
+        if (e.PropertyName is nameof(KeyProfile.DurationSeconds) or nameof(KeyProfile.DurationMilliseconds) or null)
         {
             OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
         }
@@ -270,8 +288,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void SetRepeatMode(object? parameter)
     {
-        SelectedProfile.DurationSeconds = string.Equals(parameter?.ToString(), "timed", StringComparison.OrdinalIgnoreCase)
-            ? Math.Max(1, SelectedProfile.DurationSeconds) : 0;
+        if (string.Equals(parameter?.ToString(), "timed", StringComparison.OrdinalIgnoreCase))
+        {
+            if (SelectedProfile.TotalDurationSeconds <= 0)
+            { SelectedProfile.DurationSeconds = 1; SelectedProfile.DurationMilliseconds = 0; }
+        }
+        else { SelectedProfile.DurationSeconds = 0; SelectedProfile.DurationMilliseconds = 0; }
         OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
     }
 
@@ -337,14 +359,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!IsInitialized) { HotkeyStatus = "请先点击“准备使用”，快捷键尚未启用"; return; }
         _systemHotkeys.Bind(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
         var id = 100;
-        foreach (var profile in Profiles)
+        foreach (var profile in Profiles.Where(profile => profile.IsInActivationPool))
         {
             BindAction(id++, profile, profile.StartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
             if (!profile.ToggleHotkey) BindAction(id++, profile, profile.StopHotkey, isStop: true, isToggle: false);
             if (!string.IsNullOrWhiteSpace(profile.AlternateStartHotkey))
                 BindAction(id++, profile, profile.AlternateStartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
         }
-        HotkeyStatus = $"已被动监听 {Profiles.Count} 个方案的启停键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
+        var poolCount = Profiles.Count(profile => profile.IsInActivationPool);
+        HotkeyStatus = poolCount == 0
+            ? "激活池为空，没有方案快捷键已监听 · 按键继续传递"
+            : $"已被动监听激活池内 {poolCount} 个方案的启停键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
         _logger.Info(HotkeyStatus);
     }
 
@@ -362,6 +387,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void StartSequence()
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
+        if (!SelectedProfile.IsInActivationPool) { LastMessage = "请先将所选方案加入激活池"; return; }
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
@@ -371,18 +397,19 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void QueueProfileActivation(KeyProfile source, string origin)
     {
-        if (!IsInitialized || _disposed || _captureMode != CaptureMode.None) return;
+        if (!IsInitialized || _disposed || _captureMode != CaptureMode.None || !source.IsInActivationPool) return;
         try
         {
             ProfileOperations.ValidateForRepeat([source]);
             var repeat = new KeyProfile
             {
                 Name = source.Name, Enabled = true, DurationSeconds = source.DurationSeconds,
+                DurationMilliseconds = source.DurationMilliseconds,
                 ColorCondition = source.ColorCondition.Copy(),
                 Steps = source.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs)
                     { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList()
             };
-            _logger.Info($"方案进入激活池 origin={origin}, name={repeat.Name}, durationSeconds={repeat.DurationSeconds}, steps={repeat.Steps.Count}");
+            _logger.Info($"方案进入激活池 origin={origin}, name={repeat.Name}, duration={repeat.TotalDurationSeconds:F3}s, steps={repeat.Steps.Count}");
             var activation = _activationPool.EnqueueAsync(repeat);
             _activeProfileActivations[source] = _activeProfileActivations.GetValueOrDefault(source) + 1;
             _ = ObserveActivationAsync(source, activation);

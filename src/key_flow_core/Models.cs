@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace key_flow_core;
 
@@ -30,27 +31,33 @@ public sealed class KeyProfile : INotifyPropertyChanged
     public bool ColorTriggerEnabled { get => _colorTriggerEnabled; set { _colorTriggerEnabled = value; OnPropertyChanged(); } }
     public int TriggerDebounceMs { get => _triggerDebounceMs; set { _triggerDebounceMs = value; OnPropertyChanged(); } }
     private double _durationSeconds;
+    private int _durationMilliseconds;
     private string _alternateStartHotkey = "";
-    public double DurationSeconds { get => _durationSeconds; set { _durationSeconds = value; OnPropertyChanged(); } }
+    public double DurationSeconds { get => _durationSeconds; set { _durationSeconds = value; OnPropertyChanged(); OnPropertyChanged(nameof(TotalDurationSeconds)); } }
+    public int DurationMilliseconds { get => _durationMilliseconds; set { _durationMilliseconds = value; OnPropertyChanged(); OnPropertyChanged(nameof(TotalDurationSeconds)); } }
+    [JsonIgnore]
+    public double TotalDurationSeconds => DurationSeconds + DurationMilliseconds / 1000d;
     public string AlternateStartHotkey { get => _alternateStartHotkey; set { _alternateStartHotkey = value; OnPropertyChanged(); } }
     public ColorCondition ColorCondition { get; set; } = new();
     public bool ToggleHotkey { get => _toggleHotkey; set { _toggleHotkey = value; OnPropertyChanged(); } }
     private List<KeyStep> _steps = [];
     private bool _sequenceMode;
     private bool _enabled;
+    private bool _isInActivationPool;
     public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
     public string StartHotkey { get => _startHotkey; set { _startHotkey = value; OnPropertyChanged(); } }
     public string StopHotkey { get => _stopHotkey; set { _stopHotkey = value; OnPropertyChanged(); } }
     public List<KeyStep> Steps { get => _steps; set { _steps = value; OnPropertyChanged(); } }
     public bool SequenceMode { get => _sequenceMode; set { _sequenceMode = value; OnPropertyChanged(); } }
     public bool Enabled { get => _enabled; set { _enabled = value; OnPropertyChanged(); } }
+    public bool IsInActivationPool { get => _isInActivationPool; set { _isInActivationPool = value; OnPropertyChanged(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
 }
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 5;
+    public int Version { get; set; } = 6;
     public List<KeyProfile> Profiles { get; set; } = [];
 }
 
@@ -84,7 +91,7 @@ public sealed class SequenceRunner(IKeySender sender, IScreenColorReader? screen
         AutomationValidation.Validate(profile);
         var condition = profile.ColorCondition.Copy();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (profile.DurationSeconds > 0) deadline.CancelAfter(TimeSpan.FromSeconds(profile.DurationSeconds));
+        if (profile.TotalDurationSeconds > 0) deadline.CancelAfter(TimeSpan.FromSeconds(profile.TotalDurationSeconds));
         try
         {
             await Task.Run(() => PulseLoop.Run(sender, steps, deadline.Token, canPress: condition.Enabled

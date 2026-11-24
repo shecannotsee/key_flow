@@ -26,12 +26,14 @@ public sealed class ProfileOperationsTests
     [Fact]
     public void CopyHasIndependentStepsAndPreservesHotkeys()
     {
-        var original = new KeyProfile { Name = "Test", Steps = [new("D8", 80)] };
+        var original = new KeyProfile { Name = "Test", IsInActivationPool = true, DurationSeconds = 6, DurationMilliseconds = 300, Steps = [new("D8", 80)] };
         var copy = ProfileOperations.Copy(original);
         copy.Steps[0].WaitAfterMs = 200;
         Assert.Equal(80, original.Steps[0].WaitAfterMs);
         Assert.Equal("Test 副本", copy.Name);
         Assert.Equal(original.StartHotkey, copy.StartHotkey);
+        Assert.True(copy.IsInActivationPool);
+        Assert.Equal(300, copy.DurationMilliseconds);
     }
     [Theory]
     [InlineData("F8", 80)]

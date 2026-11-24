@@ -70,6 +70,19 @@ public sealed class AutomationTests
     }
 
     [Fact]
+    public async Task TimedRepeatIncludesMillisecondRemainder()
+    {
+        var sender = new Sender(); var profile = Profile();
+        profile.DurationSeconds = 1; profile.DurationMilliseconds = 300;
+        profile.Steps[0].WaitAfterMs = 80;
+        Assert.Equal(1.3, profile.TotalDurationSeconds, 3);
+        var watch = Stopwatch.StartNew();
+        await new SequenceRunner(sender).RunAsync(profile, default).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.InRange(watch.ElapsedMilliseconds, 1200, 3500);
+        Assert.Equal(sender.Downs, sender.Ups);
+    }
+
+    [Fact]
     public async Task MismatchNeverOutputsAndStillExpires()
     {
         var sender = new Sender();
@@ -122,6 +135,14 @@ public sealed class AutomationTests
         Assert.Throws<InvalidDataException>(() => AutomationValidation.Validate(p));
     }
 
+    [Theory]
+    [InlineData(-1)] [InlineData(1000)]
+    public void MillisecondRemainderMustBeWithinOneSecond(int milliseconds)
+    {
+        var profile = Profile(); profile.DurationSeconds = 6; profile.DurationMilliseconds = milliseconds;
+        Assert.Throws<InvalidDataException>(() => AutomationValidation.Validate(profile));
+    }
+
     [Fact]
     public async Task NewOptionsRoundTripAndLegacyDefaultsRemainUnlimited()
     {
@@ -139,6 +160,25 @@ public sealed class AutomationTests
             Assert.Equal(6, loaded.DurationSeconds); Assert.Equal("F", loaded.AlternateStartHotkey);
             Assert.Equal(-20, loaded.ColorCondition.X); Assert.Equal("#123456", loaded.ColorCondition.Target);
             Assert.True(loaded.ColorCondition.Enabled); Assert.Equal(7, loaded.ColorCondition.Tolerance);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
+    public async Task VersionFiveMigrationSplitsFractionalSecondsAndEnablesOnlyFirstProfile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            await File.WriteAllTextAsync(path, """{"Version":5,"Profiles":[{"Name":"first","DurationSeconds":6.3,"Steps":[{"Key":"E","WaitAfterMs":80}]},{"Name":"second","DurationSeconds":2.125,"Steps":[{"Key":"F","WaitAfterMs":80}]}]}""");
+            var config = await new JsonConfigStore(path).LoadAsync();
+            Assert.Equal(JsonConfigStore.CurrentVersion, config.Version);
+            Assert.Equal(6, config.Profiles[0].DurationSeconds);
+            Assert.Equal(300, config.Profiles[0].DurationMilliseconds);
+            Assert.Equal(2, config.Profiles[1].DurationSeconds);
+            Assert.Equal(125, config.Profiles[1].DurationMilliseconds);
+            Assert.True(config.Profiles[0].IsInActivationPool);
+            Assert.False(config.Profiles[1].IsInActivationPool);
         }
         finally { File.Delete(path); File.Delete(path + ".bak"); }
     }

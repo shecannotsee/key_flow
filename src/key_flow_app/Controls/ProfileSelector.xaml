@@ -4,10 +4,18 @@
     <TextBlock Text="我的配置" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
     <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Content="＋ 新建方案" Command="{Binding UseVerifiedPresetCommand}"/><Button Content="保存全部" Command="{Binding SaveCommand}" Background="#EAF1FF" Foreground="#245BC5" Margin="0"/></StackPanel>
   </Grid>
+  <TextBlock Text="{Binding ActivationPoolStatus}" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,0,0,8"/>
   <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" MaxHeight="150" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,0,4">
     <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Margin" Value="0,0,8,8"/><Setter Property="Padding" Value="14,10"/><Setter Property="Background" Value="#F3F4F6"/><Setter Property="Foreground" Value="#505865"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border></ControlTemplate></Setter.Value></Setter><Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#DDEAFF"/><Setter Property="Foreground" Value="#245BC5"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="Background" Value="#DDEAFF"/></Trigger></Style.Triggers></Style></ListBox.ItemContainerStyle>
-    <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" MaxWidth="220" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/></DataTemplate></ListBox.ItemTemplate>
+    <ListBox.ItemTemplate><DataTemplate>
+      <StackPanel MinWidth="150">
+        <TextBlock Text="{Binding Name}" MaxWidth="220" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
+        <Button Command="{Binding DataContext.ToggleActivationPoolCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="0" Margin="0,5,0,0" Background="Transparent" BorderThickness="0" ToolTip="加入或移出可触发方案列表">
+          <CheckBox Content="激活池" IsChecked="{Binding IsInActivationPool, Mode=OneWay}" IsHitTestVisible="False" Focusable="False" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
+        </Button>
+      </StackPanel>
+    </DataTemplate></ListBox.ItemTemplate>
   </ListBox>
   <Grid Margin="0,4,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions><TextBlock Text="名称" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" Margin="0,0,12,0"/><TextBox Grid.Column="1" Text="{Binding SelectedProfile.Name, UpdateSourceTrigger=PropertyChanged}" Background="#FAFBFD" BorderBrush="#E8EBEF"/></Grid>
   <Expander Header="管理配置" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,0">

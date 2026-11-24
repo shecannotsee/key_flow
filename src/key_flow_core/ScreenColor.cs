@@ -78,11 +78,12 @@ public static class AutomationValidation
 {
     public static void Validate(KeyProfile profile)
     {
-        if (!double.IsFinite(profile.DurationSeconds) || profile.DurationSeconds is < 0 or > 86400)
-            throw new InvalidDataException("持续时间应为 0 至 86400 秒，0 表示持续运行");
+        if (!double.IsFinite(profile.DurationSeconds) || profile.DurationSeconds is < 0 or > 86400 ||
+            profile.DurationMilliseconds is < 0 or > 999 || profile.TotalDurationSeconds > 86400)
+            throw new InvalidDataException("持续时间应为 0 至 86400 秒，毫秒部分应为 0 至 999；0 表示持续运行");
         if (profile.TriggerDebounceMs is < 50 or > 10000)
             throw new InvalidDataException("激活确认时间应为 50 至 10000 毫秒");
-        if (profile.ColorTriggerEnabled && profile.DurationSeconds <= 0)
+        if (profile.ColorTriggerEnabled && profile.TotalDurationSeconds <= 0)
             throw new InvalidDataException("颜色触发流程需要设置大于 0 秒的持续时间");
         var c = profile.ColorCondition ?? throw new InvalidDataException("颜色条件不能为空");
         var active = RgbColor.Parse(c.Target);
