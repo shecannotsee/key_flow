@@ -318,7 +318,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             _logger.Info($"热键 source={_systemHotkeys.LastSource}, id={id}; {InputDiagnostics.DescribeForeground()}");
             if (id == 3) { StopEverything("紧急停止快捷键已触发"); return; }
             if (!_hotkeyActions.TryGetValue(id, out var action)) return;
-            if (action.IsStop || _hotkeyActions.Values.Any(item => item.IsStop && item.Chord == action.Chord))
+            if (action.IsStop || action.Chord == KeyChord.Parse("Ctrl+Shift+F10") ||
+                _hotkeyActions.Values.Any(item => item.IsStop && item.Chord == action.Chord))
             { StopEverything($"方案“{action.Profile.Name}”的停止键已触发"); return; }
             if (action.IsToggle && IsProfileActive(action.Profile))
             { StopEverything($"方案“{action.Profile.Name}”的开关键已触发"); return; }
