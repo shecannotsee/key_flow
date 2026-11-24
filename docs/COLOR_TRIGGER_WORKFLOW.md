@@ -1,8 +1,8 @@
-# KeyFlow 1.2.0：颜色激活触发流程
+# key_flow 1.2.0：颜色激活触发流程
 
 ## 安装和测试
 
-关闭正在运行的 KeyFlow，运行 `dist/KeyFlow-Setup-1.2.0-x64.exe` 更新。安装保留个人配置；首次加载旧配置不自动保存，修改后点击保存。
+关闭正在运行的 key_flow，运行 `dist/key_flow_setup_1.2.0_x64.exe` 更新。安装保留个人配置；首次加载旧配置不自动保存，修改后点击保存。
 
 1. 点击“准备使用”，选择或复制一个配置。
 2. 按键序列保留 E，间隔设为 80ms，持续时间设为 6 秒。
@@ -36,7 +36,7 @@ ScreenColorReader → ColorMatcher → ActivationEdge → ColorTriggerMonitor
 
 - 程序及安装包 1.2.0；修正安装包数字产品版本为构建版本，避免文件属性仍显示 1.0.0。
 - 配置 v4：v1/v2/v3 自动加载迁移，旧配置默认关闭颜色触发。保存使用原有原子替换和备份；复制与导入导出保留触发模式及确认时间。
-- 实际执行 `dotnet test KeyFlow.sln --verbosity quiet --logger "trx;LogFilePrefix=release-1.2.0-colors" --results-directory .artifacts/trigger-tests`：Core 43、Windows 41，共 84 项通过。
+- 实际执行 `dotnet test key_flow.sln --verbosity quiet --logger "trx;LogFilePrefix=release-1.2.0-colors" --results-directory .artifacts/trigger-tests`：Core 43、Windows 41，共 84 项通过。
 - 新测试：启动时激活、闪烁过滤、持续激活仅执行一次、恢复后再次激活、串行执行、空闲与执行期间停止、采样异常、流程异常、自动结束释放、配置迁移和复制。
 - 真实 WPF 窗口从黑色切为绿色，经实际屏幕读取触发限时重复测试后端，执行一次且按下/释放配对。测试没有向业务应用发送真实按键。
 - 未自动安装覆盖用户现有程序；游戏、业务界面、HDR/独占全屏和长时间现场效果待用户安装验证。

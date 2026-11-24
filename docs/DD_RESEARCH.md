@@ -45,15 +45,15 @@ SHA256：`728632DECC9339D780C708A92F6185E86E04DE5E59538AA1ACA9AC68563B1B1F`
 
 - 已实现 DdNativeKeyboard / DdKeySender：显式路径加载、DD_btn(0) 初始化、DD_todc 转换、DD_key 按下/释放，保留 DLL 至进程退出；后端每进程仅初始化一次。
 - 接入现有 IKeySender / SequenceRunner / RuntimeController。DD 失败不会回退 SendInput。追踪可能已按下的键，释放失败重试并继续清理其他键，运行时记录清理失败而不产生未观察的任务异常。无法保证原生调用挂死、断电或强制终止进程时释放。
-- 新入口 `Start-InputProbe-DD.cmd`，使用本地已核验 hid.72000.dll；UI 显示 DD HID。原 SendInput 和自有 VHF 入口保留。
+- 新入口 `start_key_flow.cmd`，使用本地已核验 hid.72000.dll；UI 显示 DD HID。原 SendInput 和自有 VHF 入口保留。
 - dumpbin 检查真实 DLL 导出包含 DD_btn、DD_key、DD_todc。
 - 安装前真实探针 DD_btn(0) 返回 0，系统未发现 ddhid72000 设备或服务。
 - ddc.exe Authenticode 为 Valid，之后以 RunAs 启动厂商安装器。服务 ddhid72000 已 Running；枚举到 HID Keyboard Device 等 9 个 HID 子设备，状态 OK。安装器进程曾继续驻留，未将进程退出码作为成功依据。
 - 安装后 `dotnet run --project tools/DdProbe --no-build -- .artifacts/dd-research/hid.72000.dll` 返回 0：初始化成功，VK D1/A/Shift/Ctrl/Alt/Left 对应 DD 201/401/500/600/602/710。此探针没有发送按键。
-- `dotnet test InputProbe.sln --no-restore`：Core 7、Windows 16，共 23 项通过。新增 5 项使用假 DD 接口验证组合键、失败转换、释放重试、取消与运行时错误日志，不代表真实键盘输入测试。
-- `dotnet build InputProbe.sln --no-restore`：零警告、零错误。
+- `dotnet test key_flow.sln --no-restore`：Core 7、Windows 16，共 23 项通过。新增 5 项使用假 DD 接口验证组合键、失败转换、释放重试、取消与运行时错误日志，不代表真实键盘输入测试。
+- `dotnet build key_flow.sln --no-restore`：零警告、零错误。
 - 独立 WPF 接收窗口支持传递 --dd DLL路径给隔离 App；本次执行因接收窗口失焦在发启动键前终止，退出码 1。真实按键接收、时序和剑三兼容性仍未验证。
 
 已安装的是厂商完整 HID 包，包含键盘、鼠标、触摸等多个集合，并非仅一个键盘设备。没有修改 Secure Boot、内存完整性或测试签名。需要卸载时使用配套厂商 `hid.drv/uninstall.bat`（调用 ddc -u，需要管理员）；未执行卸载。
 
-手工验证：关闭旧 App，运行根目录 Start-InputProbe-DD.cmd，确认界面模式为 DD HID；在记事本中使用配置的开始键（默认 F8），停止键默认 F9，紧急停止 Ctrl+Shift+F10。先确认普通窗口收到按键，再独立测试目标应用。日志位于 App 输出目录 input-probe.log。
+手工验证：关闭旧 App，运行根目录 start_key_flow.cmd，确认界面模式为 DD HID；在记事本中使用配置的开始键（默认 F8），停止键默认 F9，紧急停止 Ctrl+Shift+F10。先确认普通窗口收到按键，再独立测试目标应用。日志位于 App 输出目录 key_flow.log。

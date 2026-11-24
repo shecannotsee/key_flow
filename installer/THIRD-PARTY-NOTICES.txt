@@ -1,4 +1,4 @@
-KeyFlow third-party components
+key_flow third-party components
 
 .NET Runtime / Windows Desktop Runtime: Microsoft, MIT license.
 https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 DD vendor binaries (hid.72000.dll, ddc.exe, driver SYS/INF/CAT):
 https://github.com/ddxoft/master
-Proprietary vendor components, not KeyFlow source code. Vendor terms apply.
+Proprietary vendor components, not key_flow source code. Vendor terms apply.
 This package is built for local testing with the existing verified dependency.
 Public redistribution rights have not been established by this project.
-The shared system driver is preserved when KeyFlow is uninstalled.
+The shared system driver is preserved when key_flow is uninstalled.

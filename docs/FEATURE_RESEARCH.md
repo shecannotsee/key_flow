@@ -26,7 +26,7 @@
 
 ## 验证
 
-`dotnet test InputProbe.sln --artifacts-path .artifacts/manual-init --verbosity quiet`：Core 19、Windows 25，共 44 项通过。覆盖显式初始化只执行一次且不调用输出、深复制、导入冲突校验、JSON 往返；WPF 编译通过。未实际初始化真实 DD，未测试游戏内输入或手动操作文件对话框。
+`dotnet test key_flow.sln --artifacts-path .artifacts/manual-init --verbosity quiet`：Core 19、Windows 25，共 44 项通过。覆盖显式初始化只执行一次且不调用输出、深复制、导入冲突校验、JSON 往返；WPF 编译通过。未实际初始化真实 DD，未测试游戏内输入或手动操作文件对话框。
 
 ## 配置区布局调整
 

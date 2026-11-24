@@ -34,7 +34,7 @@
 
 ## 实际验证（2026-11-25）
 
-运行 `dotnet test KeyFlow.sln --verbosity quiet --logger "trx;LogFilePrefix=automation" --results-directory .artifacts/automation-tests`：Core 31 项、Windows 39 项，全部通过。
+运行 `dotnet test key_flow.sln --verbosity quiet --logger "trx;LogFilePrefix=automation" --results-directory .artifacts/automation-tests`：Core 31 项、Windows 39 项，全部通过。
 
 新增测试覆盖：
 

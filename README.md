@@ -1,12 +1,12 @@
-# KeyFlow
+# key_flow
 
 Windows DD 重复按键工具，.NET 8 / WPF。
 
 ## 使用
 
-安装用户：运行 `dist/KeyFlow-Setup-1.2.0-x64.exe`，安装后从桌面或开始菜单打开 KeyFlow。无需另装 .NET。可在 Windows 设置 → 应用 → KeyFlow 中卸载。
+安装用户：运行 `dist/key_flow_setup_1.2.1_x64.exe`，安装后从桌面或开始菜单打开 key_flow。无需另装 .NET。可在 Windows 设置 → 应用 → key_flow 中卸载。
 
-源码用户：双击 `Start-KeyFlow.cmd` 构建并启动，或运行 `tools/Build-Installer.ps1` 生成安装包。程序启动请求管理员权限。
+源码用户：双击 `start_key_flow.cmd` 构建并启动，或运行 `tools/build_installer.ps1` 生成安装包。程序启动请求管理员权限。
 
 1. 点击“准备使用”。此前配置编辑、保存、置顶、开始、停止和热键不可用。
 2. 初始化成功后选择配置，点击按键按钮录入首个键，设置重复间隔。
@@ -18,16 +18,16 @@ Windows DD 重复按键工具，.NET 8 / WPF。
 
 支持新建、重命名、复制、删除（至少保留一个）、JSON 导入和导出当前配置。导入追加，不替换现有配置；点击“保存配置”才写入本地。保存使用原子替换并保留 `.bak`。
 
-配置与日志位于 `%LOCALAPPDATA%\KeyFlow\config.json` 和 `keyflow.log`。首次源码运行可复制旧配置且不覆盖已有配置，原文件不删除；本机已有配置已迁移并核对哈希。更新与卸载保留个人数据及系统共享输入组件。
+配置与日志位于 `%LOCALAPPDATA%\key_flow\config.json` 和 `key_flow.log`。首次源码运行可复制旧配置且不覆盖已有配置，原文件不删除；本机已有配置已迁移并核对哈希。更新与卸载保留个人数据及系统共享输入组件。
 
-完整构建与验证记录见 [安装交付](docs/KEYFLOW_INSTALLATION.md)。
+完整构建与验证记录见 [安装交付](docs/key_flow_installation.md)。
 
 ## 架构
 
 - Core：重复调度、配置存储、运行时。
 - Windows：DD 输出、键盘监听、诊断、配置复制与校验。
 - App：模块化 WPF；MainViewModel.Setup.cs 负责手动初始化与配置交换。
-- tests：核心和 Windows 测试。运行 `dotnet test KeyFlow.sln`。
+- tests：核心和 Windows 测试。运行 `dotnet test key_flow.sln`。
 
 输出仅用 DD；热键接收使用 MouseKeyHook、Raw Input、系统热键和状态轮询。独立 Demo 和旧启动入口已删除，历史可由 Git 恢复。
 
@@ -70,3 +70,15 @@ DD 输出按 Ctrl/Alt/Shift、主键顺序按下，逆序释放；失败按下�
 详细操作、架构与 84 项测试结果见 [颜色触发流程](docs/COLOR_TRIGGER_WORKFLOW.md)。
 
 支持划定取色区域，并在用户点击瞬间分别采集激活色和未激活色。采集窗口暂时收起，点击只作为取色时刻，不会传给目标程序；Esc 取消。两色模式把其他颜色视为未知，避免把动画过渡颜色当成恢复状态。区域采用九点均值，建议选择均匀的小色块。
+
+## 仓库命名与本地开发
+
+项目统一使用 `key_flow`，仓库目录为 `key_flow`。主解决方案 `key_flow.sln`；项目目录为 `src/key_flow_app`、`src/key_flow_core`、`src/key_flow_windows` 及对应 `tests/key_flow_*_tests`。命名空间与项目同名；C# 类型、方法和 WPF 控件名称继续遵循语言原有惯例。
+
+1. 安装 .NET 8 SDK，执行 `dotnet test key_flow.sln`。
+2. 按 `dependencies/dd/README.md` 准备本地输入组件，双击 `start_key_flow.cmd`。
+3. 安装 NSIS 后运行 `tools/build_installer.ps1 -NsisPath <makensis.exe> -DriverSource <厂商组件目录>`。图标已入库，重建图标需 Python 和 Pillow。
+
+版本 1.2.1 使用 `%LOCALAPPDATA%/key_flow`、`key_flow.exe`、`key_flow.log`、`key_flow_setup_1.2.1_x64.exe`。首次运行只在新配置不存在时复制旧产品配置，不删除或覆盖旧数据。历史路径字面量仅用于迁移兼容。旧产品的已安装副本不会因源码改名被自动删除，可在确认迁移完成后从系统设置卸载旧副本。
+
+Git 仅提交源码、文档和图标；构建输出、安装包、本地输入组件 DLL 与 `.artifacts` 均忽略。上传 GitHub 时推送仓库即可，不需要上传整个本地文件夹；本次没有创建远程仓库或推送。
