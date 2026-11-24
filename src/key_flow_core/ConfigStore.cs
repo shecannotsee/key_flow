@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 6;
+    public const int CurrentVersion = 8;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -25,20 +25,36 @@ public sealed class JsonConfigStore(string path)
                 }
             config.Version = CurrentVersion;
         }
-        if (version is 2 or 3 or 4 or 5) config.Version = CurrentVersion;
+        if (version is >= 2 and < CurrentVersion) config.Version = CurrentVersion;
         if (version < CurrentVersion)
         {
             foreach (var profile in config.Profiles ?? [])
             {
-                profile.SequenceMode = profile.Steps?.Count > 1;
-                var seconds = Math.Floor(profile.DurationSeconds);
-                var milliseconds = (int)Math.Round((profile.DurationSeconds - seconds) * 1000, MidpointRounding.AwayFromZero);
-                if (milliseconds >= 1000) { seconds++; milliseconds = 0; }
-                profile.DurationSeconds = seconds;
-                profile.DurationMilliseconds = milliseconds;
-                profile.IsInActivationPool = false;
+                if (version < 5) profile.SequenceMode = profile.Steps?.Count > 1;
+                foreach (var step in profile.Steps ?? [])
+                {
+                    if (version is 0 or 1)
+                    {
+                        step.WaitAfterMs = Math.Max(0, step.WaitAfterMs - step.HoldMs);
+                    }
+                    else if (version is >= 2 and < 7)
+                    {
+                        var oldStartInterval = step.WaitAfterMs;
+                        step.HoldMs = RepeatTiming.HoldFor(Math.Clamp(oldStartInterval, 1, 3_600_000));
+                        step.WaitAfterMs = Math.Max(0, oldStartInterval - step.HoldMs);
+                    }
+                }
+                if (version < 6)
+                {
+                    var seconds = Math.Floor(profile.DurationSeconds);
+                    var milliseconds = (int)Math.Round((profile.DurationSeconds - seconds) * 1000, MidpointRounding.AwayFromZero);
+                    if (milliseconds >= 1000) { seconds++; milliseconds = 0; }
+                    profile.DurationSeconds = seconds;
+                    profile.DurationMilliseconds = milliseconds;
+                    profile.IsInActivationPool = false;
+                }
             }
-            if (config.Profiles is { Count: > 0 }) config.Profiles[0].IsInActivationPool = true;
+            if (version < 6 && config.Profiles is { Count: > 0 }) config.Profiles[0].IsInActivationPool = true;
         }
         Validate(config);
         return config;
@@ -62,7 +78,7 @@ public sealed class JsonConfigStore(string path)
     private static AppConfig CreateDefault() => new()
     {
         Version = CurrentVersion,
-        Profiles = [new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] }]
+        Profiles = [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }]
     };
 
     private static void Validate(AppConfig config)
@@ -81,7 +97,7 @@ public sealed class JsonConfigStore(string path)
             foreach (var step in profile.Steps)
             {
                 if (string.IsNullOrWhiteSpace(step.Key)) throw new InvalidDataException($"配置 {profile.Name} 存在空按键");
-                if (step.WaitAfterMs is < 0 or > 3_600_050 || step.HoldMs is < 1 or > 60_000)
+                if (step.WaitAfterMs is < 0 or > 3_600_000 || step.HoldMs is < 1 or > 60_000)
                     throw new InvalidDataException($"配置 {profile.Name} 的间隔无效");
             }
         }

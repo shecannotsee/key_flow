@@ -83,6 +83,20 @@ public sealed class AutomationTests
     }
 
     [Fact]
+    public async Task RefreshingAnActiveTimedWindowMovesItsExpiryToTheLatestTrigger()
+    {
+        using var window = new ActivationWindow(.3);
+        window.Start();
+        await Task.Delay(180);
+        Assert.True(window.Refresh());
+        await Task.Delay(180);
+        Assert.False(window.IsExpired);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Task.Delay(Timeout.Infinite, window.Token)
+            .WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(window.IsExpired);
+    }
+
+    [Fact]
     public async Task MismatchNeverOutputsAndStillExpires()
     {
         var sender = new Sender();
@@ -179,6 +193,50 @@ public sealed class AutomationTests
             Assert.Equal(125, config.Profiles[1].DurationMilliseconds);
             Assert.True(config.Profiles[0].IsInActivationPool);
             Assert.False(config.Profiles[1].IsInActivationPool);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+
+    [Fact]
+    public async Task VersionSixMigrationPreservesActivationPoolAndMilliseconds()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            await File.WriteAllTextAsync(path, """{"Version":6,"Profiles":[{"Name":"first","DurationSeconds":6,"DurationMilliseconds":300,"IsInActivationPool":false,"SequenceMode":true,"Steps":[{"Key":"E","WaitAfterMs":80,"HoldMs":30},{"Key":"F","WaitAfterMs":100,"HoldMs":30}]},{"Name":"second","DurationSeconds":3,"DurationMilliseconds":20,"IsInActivationPool":true,"Steps":[{"Key":"D8","WaitAfterMs":80,"HoldMs":30}]}]}""");
+            var config = await new JsonConfigStore(path).LoadAsync();
+            Assert.Equal(JsonConfigStore.CurrentVersion, config.Version);
+            Assert.Equal(300, config.Profiles[0].DurationMilliseconds);
+            Assert.False(config.Profiles[0].IsInActivationPool);
+            Assert.True(config.Profiles[0].SequenceMode);
+            Assert.Equal(50, config.Profiles[0].Steps[0].WaitAfterMs);
+            Assert.Equal(70, config.Profiles[0].Steps[1].WaitAfterMs);
+            Assert.True(config.Profiles[1].IsInActivationPool);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
+    }
+    [Fact]
+    public async Task VersionSevenGroupingUpgradePreservesTimingAndParticipation()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            await File.WriteAllTextAsync(path, """{"Version":7,"Profiles":[{"Name":"Existing","IsInActivationPool":true,"Steps":[{"Key":"E","WaitAfterMs":80,"HoldMs":30}]}]}""");
+            var store = new JsonConfigStore(path);
+            var config = await store.LoadAsync();
+            Assert.Equal(JsonConfigStore.CurrentVersion, config.Version);
+            var profile = config.Profiles[0];
+            Assert.Equal("未分组", profile.GroupName);
+            Assert.Equal(80, profile.Steps[0].WaitAfterMs);
+            Assert.Equal(30, profile.Steps[0].HoldMs);
+            Assert.True(profile.IsInActivationPool);
+            profile.GroupName = "  配套方案  ";
+            await store.SaveAsync(config);
+            var loaded = (await store.LoadAsync()).Profiles[0];
+            Assert.Equal("配套方案", loaded.GroupName);
+            Assert.Equal("Existing", loaded.Name);
+            loaded.GroupName = " ";
+            Assert.Equal("未分组", loaded.GroupName);
         }
         finally { File.Delete(path); File.Delete(path + ".bak"); }
     }

@@ -24,7 +24,6 @@ public partial class MainWindow : Window
             return;
         }
         DataContext = _viewModel;
-        var expandedHeight = 800d;
         _viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.IsInitialized))
@@ -32,21 +31,8 @@ public partial class MainWindow : Window
                 if (_viewModel.IsInitialized)
                 {
                     MinWidth = 540; MinHeight = 460;
-                    if (WindowState == WindowState.Normal) { Width = 700; Height = expandedHeight; }
+                    if (WindowState == WindowState.Normal) { Width = 700; Height = 800; }
                 }
-                return;
-            }
-            if (e.PropertyName != nameof(MainViewModel.IsRunning)) return;
-            if (_viewModel.IsRunning)
-            {
-                expandedHeight = ActualHeight > 0 ? ActualHeight : Height;
-                MinHeight = 360;
-                if (WindowState == WindowState.Normal) Height = 380;
-            }
-            else
-            {
-                MinHeight = _viewModel.IsInitialized ? 460 : 300;
-                if (_viewModel.IsInitialized && WindowState == WindowState.Normal) Height = expandedHeight;
             }
         };
         AddHandler(System.Windows.Controls.Validation.ErrorEvent, new EventHandler<System.Windows.Controls.ValidationErrorEventArgs>((_, e) =>

@@ -57,13 +57,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             var members = Profiles.Count(profile => profile.IsInActivationPool);
             return members == 0
-                ? "激活池为空 · 没有方案可被快捷键触发"
-                : $"激活池：{members} 个可触发方案 · " + (_activationPool.ActiveCount == 0 ? "空闲" : $"{_activationPool.ActiveCount} 个正在执行或等待");
+                ? "暂无参与触发的方案"
+                : $"{members} 个方案参与触发 · " + (_activationPool.ActiveCount == 0 ? "当前空闲" : $"{_activationPool.ActiveCount} 个正在执行或等待");
         }
     }
 
 
     public List<KeyProfile> Profiles { get; private set; }
+    public IEnumerable<KeyProfile> ParticipatingProfiles => Profiles.Where(profile => profile.IsInActivationPool);
+    public bool HasParticipatingProfiles => Profiles.Any(profile => profile.IsInActivationPool);
+    public IEnumerable<string> AvailableGroups => Profiles.Select(profile => profile.GroupName).Distinct().OrderBy(name => name);
+    public ICommand EnableGroupCommand { get; private set; } = null!;
+    public ICommand DisableGroupCommand { get; private set; } = null!;
     public KeyProfile SelectedProfile
     {
         get => _selectedProfile;
@@ -126,12 +131,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException)
         {
-            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] }] };
+            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }] };
             _configLoadMessage = $"配置加载失败，已使用默认配置：{exception.Message}";
         }
         Profiles = loaded.Profiles.Count > 0
             ? loaded.Profiles
-            : [new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] }];
+            : [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }];
         _selectedProfile = Profiles[0];
         _selectedProfile.PropertyChanged += SelectedProfileChanged;
         var logger = _logger = new FileInputLogger(AppPaths.Log);
@@ -188,14 +193,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         SetupAutomationCommands();
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
         SetupEditorCommands();
+        EnableGroupCommand = new RelayCommand(group => SetGroupParticipation(group, true), _ => CanEdit);
+        DisableGroupCommand = new RelayCommand(group => SetGroupParticipation(group, false), _ => CanEdit);
         ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && SelectedProfile.IsInActivationPool && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
         {
-            var preset = new KeyProfile { Name = "数字 8 · 80ms", IsInActivationPool = true, Steps = [new("D8", 80)] };
+            var preset = new KeyProfile { Name = ProfileOperations.NextProfileName(Profiles), GroupName = SelectedProfile.GroupName, IsInActivationPool = true, Steps = [new("D8", 80)] };
             Profiles = [.. Profiles, preset];
             OnPropertyChanged(nameof(Profiles)); OnPropertyChanged(nameof(ActivationPoolStatus));
             SelectedProfile = preset;
-            LastMessage = "已新建数字 8 配置，开始后立即重复";
+            LastMessage = $"已新建“{preset.Name}”，请编辑方案并保存";
         }, _ => CanEdit);
         ToggleActivationPoolCommand = new RelayCommand(parameter =>
         {
@@ -204,8 +211,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             ConfigureHotkeys();
             OnPropertyChanged(nameof(ActivationPoolStatus));
             LastMessage = profile.IsInActivationPool
-                ? $"方案“{profile.Name}”已加入激活池，可由热键触发；保存配置以保留设置"
-                : $"方案“{profile.Name}”已移出激活池，不再响应该方案的热键；保存配置以保留设置";
+                ? $"方案“{profile.Name}”已参与触发；保存配置以保留设置"
+                : $"方案“{profile.Name}”已停止参与触发；保存配置以保留设置";
         }, parameter => CanEdit && parameter is KeyProfile profile && Profiles.Contains(profile));
         StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
@@ -215,6 +222,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         CaptureStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Start), _ => CanEdit);
         CaptureStopCommand = new RelayCommand(_ => BeginCapture(CaptureMode.Stop), _ => CanEdit);
         CaptureSequenceCommand = new RelayCommand(parameter => BeginSequenceCapture(parameter), _ => CanEdit);
+    }
+
+    private void SetGroupParticipation(object? group, bool enabled)
+    {
+        if (!CanEdit || group is not string name) return;
+        foreach (var profile in Profiles.Where(profile => profile.GroupName == name))
+            profile.IsInActivationPool = enabled;
+        ConfigureHotkeys();
+        OnPropertyChanged(nameof(ActivationPoolStatus));
+        CommandManager.InvalidateRequerySuggested();
+        LastMessage = $"分组“{name}”已{(enabled ? "全部参与" : "全部停止参与")}触发；请保存配置";
     }
 
     private async Task SaveAsync()
@@ -242,6 +260,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void SelectedProfileChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(KeyProfile.GroupName) or null) OnPropertyChanged(nameof(AvailableGroups));
         if (e.PropertyName is nameof(KeyProfile.DurationSeconds) or nameof(KeyProfile.DurationMilliseconds) or null)
         {
             OnPropertyChanged(nameof(IsUnlimitedMode)); OnPropertyChanged(nameof(IsTimedMode));
@@ -368,8 +387,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         var poolCount = Profiles.Count(profile => profile.IsInActivationPool);
         HotkeyStatus = poolCount == 0
-            ? "激活池为空，没有方案快捷键已监听 · 按键继续传递"
-            : $"已被动监听激活池内 {poolCount} 个方案的启停键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
+            ? "暂无参与触发的方案，未监听方案快捷键 · 按键继续传递"
+            : $"正在监听 {poolCount} 个参与触发方案的快捷键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
         _logger.Info(HotkeyStatus);
     }
 
@@ -387,7 +406,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void StartSequence()
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
-        if (!SelectedProfile.IsInActivationPool) { LastMessage = "请先将所选方案加入激活池"; return; }
+        if (!SelectedProfile.IsInActivationPool) { LastMessage = "请先将所选方案设为参与触发"; return; }
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
@@ -406,13 +425,18 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
                 Name = source.Name, Enabled = true, DurationSeconds = source.DurationSeconds,
                 DurationMilliseconds = source.DurationMilliseconds,
                 ColorCondition = source.ColorCondition.Copy(),
-                Steps = source.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs)
-                    { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList()
+                Steps = source.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = step.HoldMs }).ToList(),
+                RetriggerMode = source.RetriggerMode
             };
             _logger.Info($"方案进入激活池 origin={origin}, name={repeat.Name}, duration={repeat.TotalDurationSeconds:F3}s, steps={repeat.Steps.Count}");
-            var activation = _activationPool.EnqueueAsync(repeat);
+            var submission = _activationPool.Submit(repeat, source, source.RetriggerMode);
+            if (submission.Coalesced)
+            {
+                _logger.Info($"方案重复触发已合并 mode={source.RetriggerMode}, name={source.Name}");
+                return;
+            }
             _activeProfileActivations[source] = _activeProfileActivations.GetValueOrDefault(source) + 1;
-            _ = ObserveActivationAsync(source, activation);
+            _ = ObserveActivationAsync(source, submission.Completion);
         }
         catch (Exception exception) when (exception is InvalidDataException or ArgumentException or InvalidOperationException)
         { RejectStart(exception.Message); }
@@ -435,20 +459,21 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task ExecutePooledProfileAsync(KeyProfile profile, CancellationToken cancellationToken)
+    private async Task ExecutePooledProfileAsync(KeyProfile profile, CancellationToken cancellationToken, ActivationWindow window)
     {
         var dispatcher = Application.Current.Dispatcher;
         using var registration = cancellationToken.Register(() =>
         {
-            if (!dispatcher.HasShutdownStarted)
+            if (!window.IsExpired && !dispatcher.HasShutdownStarted)
                 dispatcher.BeginInvoke(new Action(() => _runtime.Stop("激活池项目已取消")));
         });
         await dispatcher.InvokeAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             _runtime.Arm();
-            await _runtime.TriggerAsync(profile);
-            cancellationToken.ThrowIfCancellationRequested();
+            await _runtime.TriggerAsync(profile, cancellationToken, window);
+            if (cancellationToken.IsCancellationRequested && !window.IsExpired)
+                cancellationToken.ThrowIfCancellationRequested();
             if (_runtime.LastRunFailed) throw new InvalidOperationException("按键方案执行失败");
         }).Task.Unwrap();
     }
@@ -553,6 +578,19 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     private void RejectStart(string reason) { LastMessage = reason; _logger.Info($"开始被拒绝：{reason}"); }
-    private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
+    {
+        PropertyChanged?.Invoke(this, new(name));
+        if (name is nameof(Profiles) or nameof(ActivationPoolStatus))
+        {
+            PropertyChanged?.Invoke(this, new(nameof(ParticipatingProfiles)));
+            PropertyChanged?.Invoke(this, new(nameof(HasParticipatingProfiles)));
+        }
+        if (name == nameof(Profiles))
+        {
+            PropertyChanged?.Invoke(this, new(nameof(AvailableGroups)));
+            PropertyChanged?.Invoke(this, new(nameof(ActivationPoolStatus)));
+        }
+    }
 }
 

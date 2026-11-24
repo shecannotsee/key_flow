@@ -4,11 +4,22 @@ namespace key_flow_windows;
 
 public static class ProfileOperations
 {
+    public static string NextProfileName(IEnumerable<KeyProfile> profiles)
+    {
+        var names = profiles.Select(profile => profile.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var number = 1; ; number++)
+        {
+            var name = $"我的方案 {number}";
+            if (!names.Contains(name)) return name;
+        }
+    }
+
     public static KeyProfile Copy(KeyProfile profile, bool suffix = true) => new()
     {
-        Name = profile.Name + (suffix ? " 副本" : ""), Enabled = profile.Enabled,
+        Name = profile.Name + (suffix ? " 副本" : ""), GroupName = profile.GroupName, Enabled = profile.Enabled,
         IsInActivationPool = profile.IsInActivationPool,
         StartHotkey = profile.StartHotkey, StopHotkey = profile.StopHotkey, ToggleHotkey = profile.ToggleHotkey,
+        RetriggerMode = profile.RetriggerMode,
         ColorTriggerEnabled = profile.ColorTriggerEnabled, TriggerDebounceMs = profile.TriggerDebounceMs,
         DurationSeconds = profile.DurationSeconds, DurationMilliseconds = profile.DurationMilliseconds,
         AlternateStartHotkey = profile.AlternateStartHotkey,
@@ -41,7 +52,7 @@ public static class ProfileOperations
                 foreach (var s in p.Steps)
                 {
                     var chord = KeyChord.Parse(s.Key);
-                    if (s.WaitAfterMs is < 1 or > 3_600_000 || chord.CanTrigger(start) ||
+                    if (s.WaitAfterMs is < 0 or > 3_600_000 || chord.CanTrigger(start) ||
                         (!p.ToggleHotkey && chord.CanTrigger(stop)) || (alternate is not null && chord.CanTrigger(alternate)) || chord.CanTrigger(emergency))
                         throw new ArgumentException("按键或间隔无效，或序列可能触发启停快捷键");
                 }

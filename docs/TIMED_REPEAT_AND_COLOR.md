@@ -4,7 +4,7 @@
 
 - 一个选中的配置对应一个执行任务。主开始键和可选备用开始键均触发该任务，可配置 X / F → 重复 E。
 - 持续时间单位为秒，支持小数，范围 0–86400。0 表示无限重复，6 表示从触发起计时六秒；颜色等待也占用时间。
-- 同一时间不叠加任务、不排队、不重置计时。单键开关启用时，主开始键继续承担停止功能，备用键只负责开始。
+- 同一方案不叠加任务；再次触发默认从最后一次触发重新计算限时，也可设为忽略重复触发。不同方案仍使用共享 FIFO 激活池。单键开关启用时，主开始键继续承担停止功能，备用键只负责开始。
 - 停止快捷键与紧急停止保留；截止、取消、读取异常均走原有按键释放路径。
 - 每个配置保存一个屏幕物理像素坐标、目标 RGB 和容差。可建立不同配置保存不同检测点，目前不提供多点 AND/OR 流程编排。
 - 手动取色三秒倒计时期间禁用配置操作和热键；结束后恢复监听。退出取消倒计时。
@@ -17,7 +17,7 @@
 
 `SystemHotkeys (1 或 4) → MainViewModel.StartSequence → RuntimeController → SequenceRunner → PulseLoop → IKeySender`
 
-`SequenceRunner → 截止取消令牌 + IScreenColorReader → ColorMatcher → PulseLoop 的输出条件`
+`SequenceRunner → ActivationWindow 截止令牌 + IScreenColorReader → ColorMatcher → PulseLoop 的输出条件`
 
 - Core/ScreenColor.cs：颜色数据、条件配置、匹配算法、参数验证和读屏接口，无 UI/Windows 依赖。
 - Windows/ScreenColorReader.cs：可见桌面 GetPixel 与物理鼠标坐标；临时 DPI 上下文在 finally 恢复，屏幕 DC 在 finally 释放。

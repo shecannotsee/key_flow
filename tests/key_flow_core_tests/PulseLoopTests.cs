@@ -5,10 +5,11 @@ using Xunit;
 public sealed class PulseLoopTests
 {
     [Fact]
-    public async Task IntervalIncludesHoldAndSnapshotIgnoresLaterEdits()
+    public async Task GapStartsAfterReleaseAndSnapshotIgnoresLaterEdits()
     {
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var observed = new List<(string Key, double Time)>();
+        var released = new List<(string Key, double Time)>();
         var clock = Stopwatch.StartNew();
         var profile = new KeyProfile { Steps = [new("D8", 80), new("A", 80)] };
         var sender = new Fake(key =>
@@ -16,14 +17,15 @@ public sealed class PulseLoopTests
             observed.Add((key, clock.Elapsed.TotalMilliseconds));
             profile.Steps[1].Key = "B";
             if (observed.Count == 4) stop.Cancel();
-        });
+        }, key => released.Add((key, clock.Elapsed.TotalMilliseconds)));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new SequenceRunner(sender).RunAsync(profile, stop.Token));
         Assert.Equal(new[] { "D8", "A", "D8", "A" }, observed.Select(x => x.Key));
         Assert.Equal(4, sender.Ups);
-        var intervals = observed.Zip(observed.Skip(1), (a, b) => b.Time - a.Time).ToArray();
-        Assert.All(intervals, ms => Assert.True(ms >= 70, $"Premature next press: {ms:F1}ms"));
+        var gaps = released.Zip(observed.Skip(1), (up, next) => next.Time - up.Time).ToArray();
+        Assert.Equal(3, gaps.Length);
+        Assert.All(gaps, ms => Assert.True(ms >= 70, $"Premature next press: {ms:F1}ms"));
         // Generous upper bound detects runaway delays, not OS scheduling precision.
-        Assert.All(intervals, ms => Assert.True(ms < 1500, $"Delayed next press: {ms:F1}ms"));
+        Assert.All(gaps, ms => Assert.True(ms < 1500, $"Delayed next press: {ms:F1}ms"));
     }
 
     [Fact]
@@ -70,13 +72,13 @@ public sealed class PulseLoopTests
             var store = new JsonConfigStore(path);
             var config = await store.LoadAsync();
             Assert.Equal(JsonConfigStore.CurrentVersion, config.Version);
+            Assert.Equal(80, config.Profiles[0].Steps[0].WaitAfterMs);
             Assert.Equal(50, config.Profiles[0].Steps[0].HoldMs);
-            Assert.Equal(130, config.Profiles[0].Steps[0].WaitAfterMs);
             Assert.Equal(old, await File.ReadAllTextAsync(path));
             await store.SaveAsync(config);
             Assert.Equal(old, await File.ReadAllTextAsync(path + ".bak"));
             var again = await store.LoadAsync();
-            Assert.Equal(130, again.Profiles[0].Steps[0].WaitAfterMs);
+            Assert.Equal(80, again.Profiles[0].Steps[0].WaitAfterMs);
         }
         finally { File.Delete(path); File.Delete(path + ".bak"); }
     }
@@ -91,11 +93,11 @@ public sealed class PulseLoopTests
         Assert.Equal(80, step.WaitAfterMs);
     }
 
-    private sealed class Fake(Action<string> down) : IKeySender
+    private sealed class Fake(Action<string> down, Action<string>? up = null) : IKeySender
     {
         public int Ups;
         public void KeyDown(string key) => down(key);
-        public void KeyUp(string key) => Ups++;
+        public void KeyUp(string key) { Ups++; up?.Invoke(key); }
         public void ReleaseAll() { }
     }
 }

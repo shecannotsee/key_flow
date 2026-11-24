@@ -29,7 +29,6 @@ public sealed partial class MainViewModel
         var profile = ProfileOperations.Copy(source, false);
         profile.Enabled = true;
         profile.ColorCondition.Enabled = false;
-        foreach (var step in profile.Steps) step.HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs);
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_automationCancellation.Token);
         _monitorCancellations[source] = cancellation;
         OnPropertyChanged(nameof(IsMonitoring)); OnPropertyChanged(nameof(CanEdit)); OnPropertyChanged(nameof(WindowTitle));
@@ -46,7 +45,8 @@ public sealed partial class MainViewModel
                     token.ThrowIfCancellationRequested();
                     if (_disposed) throw new OperationCanceledException(token);
                     _logger.Info($"颜色激活，方案进入激活池 name={profile.Name}");
-                    await _activationPool.EnqueueAsync(profile, token).ConfigureAwait(false);
+                    var submission = _activationPool.Submit(profile, source, source.RetriggerMode, token);
+                    await submission.Completion.ConfigureAwait(false);
                     token.ThrowIfCancellationRequested();
                     _logger.Info($"颜色方案完成 name={profile.Name}，等待重新激活");
                 }, cancellation.Token,

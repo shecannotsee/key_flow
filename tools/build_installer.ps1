@@ -1,7 +1,7 @@
-﻿param([string]$NsisPath, [string]$DriverSource)
+param([string]$NsisPath, [string]$DriverSource)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot
-$version = '1.3.3'
+$version = '1.3.5'
 $buildRoot = Join-Path $repoRoot ('.artifacts/package-' + [Guid]::NewGuid().ToString('N'))
 $payload = Join-Path $buildRoot 'payload'
 $outputDir = Join-Path $repoRoot 'dist'

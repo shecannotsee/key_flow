@@ -54,6 +54,57 @@ public sealed class ActivationPoolTests
         pool.Dispose();
     }
 
+    [Fact]
+    public async Task RepeatedActivationCoalescesAndRefreshesTimedWindow()
+    {
+        var started = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pool = new ActivationPool(async (_, token, _) =>
+        {
+            Interlocked.Increment(ref started);
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        });
+        var key = new object();
+        var profile = new KeyProfile { Name = "timed", DurationSeconds = .35 };
+        var first = pool.Submit(profile, key, RetriggerMode.ResetTimedRun);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.Delay(180);
+        var repeated = pool.Submit(profile, key, RetriggerMode.ResetTimedRun);
+        Assert.True(repeated.Coalesced);
+        Assert.Same(first.Completion, repeated.Completion);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.Completion.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(1, started);
+        Assert.Equal(0, pool.ActiveCount);
+        pool.Dispose();
+    }
+
+    [Fact]
+    public async Task IgnoreRetriggerCoalescesWithoutExtendingTheTimedWindow()
+    {
+        var started = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pool = new ActivationPool(async (_, token, _) =>
+        {
+            Interlocked.Increment(ref started);
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        });
+        var key = new object();
+        var profile = new KeyProfile { Name = "timed", DurationSeconds = 1.2 };
+        var first = pool.Submit(profile, key, RetriggerMode.IgnoreWhileActive);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.Delay(900);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var repeated = pool.Submit(profile, key, RetriggerMode.IgnoreWhileActive);
+        Assert.True(repeated.Coalesced);
+        Assert.Same(first.Completion, repeated.Completion);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.Completion.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.InRange(watch.ElapsedMilliseconds, 100, 800);
+        Assert.Equal(1, started);
+        pool.Dispose();
+    }
+
     private static async Task WaitUntilAsync(Func<bool> predicate)
     {
         var timeout = DateTime.UtcNow + TimeSpan.FromSeconds(3);

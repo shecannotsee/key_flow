@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 namespace key_flow_core;
 
 public enum RuntimeState { Stopped, Armed, Running }
+public enum RetriggerMode { ResetTimedRun, IgnoreWhileActive }
 
 public sealed class KeyStep : INotifyPropertyChanged
 {
@@ -22,10 +23,12 @@ public sealed class KeyStep : INotifyPropertyChanged
 
 public sealed class KeyProfile : INotifyPropertyChanged
 {
-    private string _name = "新建配置";
+    private string _name = "我的方案 1";
+    private string _groupName = "未分组";
     private string _startHotkey = "F8";
     private string _stopHotkey = "F9";
     private bool _toggleHotkey;
+    private RetriggerMode _retriggerMode;
     private bool _colorTriggerEnabled;
     private int _triggerDebounceMs = 100;
     public bool ColorTriggerEnabled { get => _colorTriggerEnabled; set { _colorTriggerEnabled = value; OnPropertyChanged(); } }
@@ -40,11 +43,13 @@ public sealed class KeyProfile : INotifyPropertyChanged
     public string AlternateStartHotkey { get => _alternateStartHotkey; set { _alternateStartHotkey = value; OnPropertyChanged(); } }
     public ColorCondition ColorCondition { get; set; } = new();
     public bool ToggleHotkey { get => _toggleHotkey; set { _toggleHotkey = value; OnPropertyChanged(); } }
+    public RetriggerMode RetriggerMode { get => _retriggerMode; set { _retriggerMode = value; OnPropertyChanged(); } }
     private List<KeyStep> _steps = [];
     private bool _sequenceMode;
     private bool _enabled;
     private bool _isInActivationPool;
     public string Name { get => _name; set { _name = value; OnPropertyChanged(); } }
+    public string GroupName { get => _groupName; set { _groupName = string.IsNullOrWhiteSpace(value) ? "未分组" : value.Trim(); OnPropertyChanged(); } }
     public string StartHotkey { get => _startHotkey; set { _startHotkey = value; OnPropertyChanged(); } }
     public string StopHotkey { get => _stopHotkey; set { _stopHotkey = value; OnPropertyChanged(); } }
     public List<KeyStep> Steps { get => _steps; set { _steps = value; OnPropertyChanged(); } }
@@ -57,7 +62,7 @@ public sealed class KeyProfile : INotifyPropertyChanged
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 6;
+    public int Version { get; set; } = JsonConfigStore.CurrentVersion;
     public List<KeyProfile> Profiles { get; set; } = [];
 }
 
@@ -76,6 +81,61 @@ public interface IInputLogger
     void Error(string message, Exception exception);
 }
 
+public sealed class ActivationWindow : IDisposable
+{
+    private readonly object _gate = new();
+    private readonly CancellationTokenSource _expired = new();
+    private readonly Timer _timer;
+    private readonly TimeSpan? _duration;
+    private bool _started, _disposed;
+
+    public CancellationToken Token => _expired.Token;
+    public bool IsExpired => _expired.IsCancellationRequested;
+
+    public ActivationWindow(double durationSeconds)
+    {
+        _duration = durationSeconds > 0 ? TimeSpan.FromSeconds(durationSeconds) : null;
+        _timer = new Timer(_ => Expire(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
+
+    public void Start()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _started) return;
+            _started = true;
+            if (_duration is { } duration) _timer.Change(duration, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    public bool Refresh()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _expired.IsCancellationRequested) return false;
+            if (_started && _duration is { } duration) _timer.Change(duration, Timeout.InfiniteTimeSpan);
+            return true;
+        }
+    }
+
+    private void Expire()
+    {
+        lock (_gate)
+            if (!_disposed) _expired.Cancel();
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _timer.Dispose();
+            _expired.Dispose();
+        }
+    }
+}
+
 public sealed class NullInputLogger : IInputLogger
 {
     public void Info(string message) { }
@@ -84,21 +144,23 @@ public sealed class NullInputLogger : IInputLogger
 
 public sealed class SequenceRunner(IKeySender sender, IScreenColorReader? screen = null)
 {
-    public async Task RunAsync(KeyProfile profile, CancellationToken cancellationToken)
+    public async Task RunAsync(KeyProfile profile, CancellationToken cancellationToken, ActivationWindow? activationWindow = null)
     {
         Validate(profile);
         var steps = profile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = step.HoldMs }).ToArray();
         AutomationValidation.Validate(profile);
         var condition = profile.ColorCondition.Copy();
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (profile.TotalDurationSeconds > 0) deadline.CancelAfter(TimeSpan.FromSeconds(profile.TotalDurationSeconds));
+        using var ownedWindow = activationWindow is null ? new ActivationWindow(profile.TotalDurationSeconds) : null;
+        var window = activationWindow ?? ownedWindow!;
+        if (activationWindow is null) window.Start();
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, window.Token);
         try
         {
             await Task.Run(() => PulseLoop.Run(sender, steps, deadline.Token, canPress: condition.Enabled
                 ? () => ColorMatcher.Matches(ColorMatcher.Sample(screen ?? throw new InvalidOperationException("未提供屏幕读取服务"), condition), condition)
                 : null), deadline.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && window.IsExpired) { }
 
     }
 
@@ -109,7 +171,7 @@ public sealed class SequenceRunner(IKeySender sender, IScreenColorReader? screen
         foreach (var step in profile.Steps)
         {
             if (string.IsNullOrWhiteSpace(step.Key)) throw new ArgumentException("按键不能为空", nameof(profile));
-            if (step.WaitAfterMs is < 0 or > 3_600_050)
+            if (step.WaitAfterMs is < 0 or > 3_600_000)
                 throw new ArgumentOutOfRangeException(nameof(profile), "步骤间隔必须在 0 到 3600000 毫秒之间");
             if (step.HoldMs is < 1 or > 60_000) throw new ArgumentOutOfRangeException(nameof(profile), "按住时长必须在 1 到 60000 毫秒之间");
         }
@@ -127,20 +189,20 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
     public string LastMessage { get; private set; } = "未启动";
 
     public void Arm() { if (!IsBusy) SetState(RuntimeState.Armed, "已就绪，等待触发"); }
-    public async Task TriggerAsync(KeyProfile profile)
+    public async Task TriggerAsync(KeyProfile profile, CancellationToken cancellationToken = default, ActivationWindow? activationWindow = null)
     {
         if (State != RuntimeState.Armed || !profile.Enabled || _runCancellation is not null) return;
         LastRunFailed = false;
-        _runCancellation = new CancellationTokenSource();
+        _runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         SetState(RuntimeState.Running, $"正在重复 {profile.Name}");
         try
         {
-            await runner.RunAsync(profile, _runCancellation.Token);
+            await runner.RunAsync(profile, _runCancellation.Token, activationWindow);
             SetState(RuntimeState.Stopped, "执行完成，已自动停止");
         }
         catch (OperationCanceledException)
         {
-            SetState(RuntimeState.Stopped, "已停止");
+            SetState(RuntimeState.Stopped, activationWindow?.IsExpired == true ? "执行完成，已自动停止" : "已停止");
         }
         catch (Exception exception)
         {

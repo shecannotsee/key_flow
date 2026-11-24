@@ -10,7 +10,7 @@
   </WrapPanel>
   <Border Background="#F6F8FB" CornerRadius="10" Padding="14" Margin="0,12,0,0"><StackPanel>
     <TextBlock Text="时间含义" FontWeight="SemiBold" Margin="0,0,0,8"/>
-    <TextBlock Text="重复间隔在“执行流程”页按步骤设置；限时长度控制整个流程运行多久。一次按键的按下时长由程序按当前短按设置处理。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}"/>
+    <TextBlock Text="“执行流程”页的间隔表示按键释放后到下一键按下前的等待时间；最后一步间隔后回到首键。限时长度控制整个流程运行多久。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}"/>
   </StackPanel></Border>
 </StackPanel>
 </UserControl>

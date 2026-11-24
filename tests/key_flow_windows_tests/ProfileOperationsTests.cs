@@ -26,19 +26,21 @@ public sealed class ProfileOperationsTests
     [Fact]
     public void CopyHasIndependentStepsAndPreservesHotkeys()
     {
-        var original = new KeyProfile { Name = "Test", IsInActivationPool = true, DurationSeconds = 6, DurationMilliseconds = 300, Steps = [new("D8", 80)] };
+        var original = new KeyProfile { Name = "Test", GroupName = "配套方案", IsInActivationPool = true, DurationSeconds = 6, DurationMilliseconds = 300, RetriggerMode = RetriggerMode.IgnoreWhileActive, Steps = [new("D8", 80)] };
         var copy = ProfileOperations.Copy(original);
         copy.Steps[0].WaitAfterMs = 200;
         Assert.Equal(80, original.Steps[0].WaitAfterMs);
         Assert.Equal("Test 副本", copy.Name);
+        Assert.Equal("配套方案", copy.GroupName);
         Assert.Equal(original.StartHotkey, copy.StartHotkey);
         Assert.True(copy.IsInActivationPool);
         Assert.Equal(300, copy.DurationMilliseconds);
+        Assert.Equal(RetriggerMode.IgnoreWhileActive, copy.RetriggerMode);
     }
     [Theory]
     [InlineData("F8", 80)]
     [InlineData("Unknown", 80)]
-    [InlineData("D8", 0)]
+    [InlineData("D8", -1)]
     public void ImportRejectsInvalidOrConflictingSequences(string key, int interval)
     {
         Assert.Throws<InvalidDataException>(() => ProfileOperations.ValidateForRepeat([new KeyProfile { Steps = [new(key, interval)] }]));
@@ -75,6 +77,15 @@ public sealed class ProfileOperationsTests
         var keyboard = new DeferredDdKeyboard(() => { calls++; return new NoInputKeyboard(); });
         keyboard.Initialize(); keyboard.Initialize();
         Assert.Equal(1, calls);
+    }
+    [Fact]
+    public void NewProfileNamesSkipExistingNamesWithoutRenamingThem()
+    {
+        var profiles = new List<KeyProfile> { new() { Name = "我的方案 1" }, new() { Name = "我的方案 3" } };
+        Assert.Equal("我的方案 2", ProfileOperations.NextProfileName(profiles));
+        profiles.Add(new() { Name = "我的方案 2" });
+        Assert.Equal("我的方案 4", ProfileOperations.NextProfileName(profiles));
+        Assert.Equal("我的方案 1", profiles[0].Name);
     }
     private sealed class NoInputKeyboard : IDdKeyboard
     {
