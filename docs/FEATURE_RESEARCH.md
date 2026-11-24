@@ -52,4 +52,4 @@ Windows Error Reporting 记录了未处理异常：只读的 `IsSingleKeyMode` �
 
 启停键改为只观察并放行，删除 `RegisterHotKey` 路径。所有方案的开始、停止和备用开始键都绑定到被动接收器；同时触发的方案快照进入有界 FIFO 激活池，单一 runtime 串行执行以保护共享输出设备。全局停止取消当前项、清空队列、停止颜色监听并释放输出按键。颜色监听按方案独立运行，边沿触发后提交到相同激活池。准备前窗口压缩到 500×320，准备后展开至工作尺寸。
 
-激活池 FIFO 与取消测试通过。Core 测试 45 项通过；Windows 测试 44 项通过，2 项要求实际桌面 `PresentationSource` 的像素测试在当前会话无法建立可见窗口而失败。未初始化 DD，未进行应用内实测。
+激活池 FIFO 与取消测试通过。最终全套运行：Core 45 项通过；Windows 45 项通过、1 项失败。失败项 `ScreenColorTests.ReadsActualVisibleWindowPixels` 在等待模拟鼠标点击时超时；过滤桌面交互后的 Windows 测试 42 项全部通过。未初始化 DD，未进行应用内实测。
