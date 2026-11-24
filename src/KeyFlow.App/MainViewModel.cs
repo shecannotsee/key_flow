@@ -31,7 +31,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _validationErrors;
     public bool IsRunning => _isRunning;
     public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
-    public string WindowTitle => IsRunning ? "● 正在重复 — KeyFlow" : "■ 已停止 — KeyFlow";
+    public string WindowTitle => IsRunning ? "● 正在重复 — KeyFlow" : IsMonitoring ? "◉ 监听中 — KeyFlow" : "■ 已停止 — KeyFlow";
     public void ChangeValidationErrors(int delta)
     {
         _validationErrors = Math.Max(0, _validationErrors + delta);
@@ -47,7 +47,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _selectedProfile;
         set
         {
-            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy) return;
+            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy || IsMonitoring) return;
             CancelCapture();
             _selectedProfile = value; SelectedStep = null; ColorStatus = "尚未检测";
             OnPropertyChanged(); OnPropertyChanged(nameof(UseToggleHotkey));
@@ -66,7 +66,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     public string StartHotkeyLabel => UseToggleHotkey ? "开始 / 停止" : "开始";
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
-    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !_profileBusy;
+    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !IsMonitoring && !_profileBusy;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
@@ -150,7 +150,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             SelectedProfile = preset;
             LastMessage = "已新建数字 8 配置，开始后立即重复";
         }, _ => CanEdit);
-        StopCommand = new RelayCommand(_ => _runtime.Stop("用户已停止"), _ => _runtime.IsBusy);
+        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null);
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
@@ -212,8 +212,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (_disposed || _captureMode != CaptureMode.None) return;
             _logger.Info($"热键 source={_systemHotkeys.LastSource}, id={id}; {InputDiagnostics.DescribeForeground()}");
-            if (id == 4 || (id == 1 && !(UseToggleHotkey && _runtime.IsBusy))) StartSequence();
-            else _runtime.Stop("快捷键已停止");
+            if (id == 4 || (id == 1 && !(UseToggleHotkey && (_runtime.IsBusy || IsMonitoring)))) StartSequence();
+            else StopEverything("快捷键已停止");
         };
         ConfigureHotkeys();
     }
@@ -252,6 +252,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
+        if (SelectedProfile.ColorTriggerEnabled) { _ = StartMonitoringAsync(); return; }
         var repeat = new KeyProfile { Name = SelectedProfile.Name, Enabled = true,
             DurationSeconds = SelectedProfile.DurationSeconds, ColorCondition = SelectedProfile.ColorCondition.Copy(),
             Steps = SelectedProfile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = RepeatTiming.HoldFor(step.WaitAfterMs) }).ToList() };
@@ -340,6 +341,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _disposed = true;
         _automationCancellation.Cancel();
+        _monitorCancellation?.Cancel();
         _systemHotkeys?.Dispose();
         try { _runtime.Stop("程序退出"); }
         finally { _runtime.Shutdown(); }

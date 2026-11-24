@@ -25,6 +25,10 @@ public sealed class KeyProfile : INotifyPropertyChanged
     private string _startHotkey = "F8";
     private string _stopHotkey = "F9";
     private bool _toggleHotkey;
+    private bool _colorTriggerEnabled;
+    private int _triggerDebounceMs = 100;
+    public bool ColorTriggerEnabled { get => _colorTriggerEnabled; set { _colorTriggerEnabled = value; OnPropertyChanged(); } }
+    public int TriggerDebounceMs { get => _triggerDebounceMs; set { _triggerDebounceMs = value; OnPropertyChanged(); } }
     private double _durationSeconds;
     private string _alternateStartHotkey = "";
     public double DurationSeconds { get => _durationSeconds; set { _durationSeconds = value; OnPropertyChanged(); } }
@@ -44,7 +48,7 @@ public sealed class KeyProfile : INotifyPropertyChanged
 
 public sealed class AppConfig
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
     public List<KeyProfile> Profiles { get; set; } = [];
 }
 
@@ -82,7 +86,7 @@ public sealed class SequenceRunner(IKeySender sender, IScreenColorReader? screen
         try
         {
             await Task.Run(() => PulseLoop.Run(sender, steps, deadline.Token, canPress: condition.Enabled
-                ? () => ColorMatcher.Matches((screen ?? throw new InvalidOperationException("未提供屏幕读取服务")).Read(condition.X, condition.Y), condition)
+                ? () => ColorMatcher.Matches(ColorMatcher.Sample(screen ?? throw new InvalidOperationException("未提供屏幕读取服务"), condition), condition)
                 : null), deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) { }
@@ -108,6 +112,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
     private readonly IInputLogger _logger = logger ?? new NullInputLogger();
     private CancellationTokenSource? _runCancellation;
     public RuntimeState State { get; private set; } = RuntimeState.Stopped;
+    public bool LastRunFailed { get; private set; }
     public bool IsBusy => _runCancellation is not null;
     public event Action<RuntimeState>? StateChanged;
     public string LastMessage { get; private set; } = "未启动";
@@ -116,6 +121,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
     public async Task TriggerAsync(KeyProfile profile)
     {
         if (State != RuntimeState.Armed || !profile.Enabled || _runCancellation is not null) return;
+        LastRunFailed = false;
         _runCancellation = new CancellationTokenSource();
         SetState(RuntimeState.Running, $"正在重复 {profile.Name}");
         try
@@ -129,6 +135,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
         }
         catch (Exception exception)
         {
+            LastRunFailed = true;
             _logger.Error("序列执行异常", exception);
             SetState(RuntimeState.Stopped, $"执行失败：{exception.Message}");
         }
@@ -159,6 +166,7 @@ public sealed class RuntimeController(SequenceRunner runner, IKeySender sender, 
         try { cleanup(); return true; }
         catch (Exception exception)
         {
+            LastRunFailed = true;
             _logger.Error("按键清理失败", exception);
             SetState(RuntimeState.Stopped, "按键释放失败，请查看日志");
             return false;

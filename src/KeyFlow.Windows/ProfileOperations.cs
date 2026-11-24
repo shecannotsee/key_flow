@@ -8,6 +8,7 @@ public static class ProfileOperations
     {
         Name = profile.Name + (suffix ? " 副本" : ""), Enabled = profile.Enabled,
         StartHotkey = profile.StartHotkey, StopHotkey = profile.StopHotkey, ToggleHotkey = profile.ToggleHotkey,
+        ColorTriggerEnabled = profile.ColorTriggerEnabled, TriggerDebounceMs = profile.TriggerDebounceMs,
         DurationSeconds = profile.DurationSeconds, AlternateStartHotkey = profile.AlternateStartHotkey,
         ColorCondition = profile.ColorCondition.Copy(),
         Steps = profile.Steps.Select(s => new KeyStep(s.Key, s.WaitAfterMs) { HoldMs = s.HoldMs }).ToList()

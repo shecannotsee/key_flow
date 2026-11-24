@@ -4,7 +4,7 @@ namespace KeyFlow.Core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -25,7 +25,7 @@ public sealed class JsonConfigStore(string path)
                 }
             config.Version = CurrentVersion;
         }
-        if (version == 2) config.Version = CurrentVersion;
+        if (version is 2 or 3) config.Version = CurrentVersion;
         Validate(config);
         return config;
     }
