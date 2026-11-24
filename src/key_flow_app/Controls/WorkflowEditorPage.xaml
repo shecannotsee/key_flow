@@ -2,8 +2,8 @@
 <StackPanel IsEnabled="{Binding CanEdit}">
   <TextBlock Text="执行什么流程" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"/>
   <UniformGrid Columns="2" Margin="0,0,0,14">
-    <RadioButton Content="单键重复" IsChecked="{Binding IsSingleKeyMode}" Command="{Binding SetWorkflowModeCommand}" CommandParameter="single"/>
-    <RadioButton Content="多个键顺序执行" IsChecked="{Binding IsSequenceMode}" Command="{Binding SetWorkflowModeCommand}" CommandParameter="sequence"/>
+    <RadioButton Content="单键重复" IsChecked="{Binding IsSingleKeyMode, Mode=OneWay}" Command="{Binding SetWorkflowModeCommand}" CommandParameter="single"/>
+    <RadioButton Content="多个键顺序执行" IsChecked="{Binding IsSequenceMode, Mode=OneWay}" Command="{Binding SetWorkflowModeCommand}" CommandParameter="sequence"/>
   </UniformGrid>
   <TextBlock Text="只保留一个步骤，它会按重复规则循环。" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSingleKeyMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
   <TextBlock Text="添加多个步骤，按列表顺序执行；整个列表作为一个流程重复。" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsSequenceMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>

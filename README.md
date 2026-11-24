@@ -4,7 +4,7 @@ Windows DD 重复按键工具，.NET 8 / WPF。
 
 ## 使用
 
-安装用户：运行 `dist/key_flow_setup_1.3.0_x64.exe`，安装后从桌面或开始菜单打开 key_flow。无需另装 .NET。可在 Windows 设置 → 应用 → key_flow 中卸载。
+安装用户：运行 `dist/key_flow_setup_1.3.1_x64.exe`，安装后从桌面或开始菜单打开 key_flow。无需另装 .NET。可在 Windows 设置 → 应用 → key_flow 中卸载。
 
 源码用户：双击 `start_key_flow.cmd` 构建并启动，或运行 `tools/build_installer.ps1` 生成安装包。程序启动请求管理员权限。
 
@@ -79,7 +79,7 @@ DD 输出按 Ctrl/Alt/Shift、主键顺序按下，逆序释放；失败按下�
 2. 按 `dependencies/dd/README.md` 准备本地输入组件，双击 `start_key_flow.cmd`。
 3. 安装 NSIS 后运行 `tools/build_installer.ps1 -NsisPath <makensis.exe> -DriverSource <厂商组件目录>`。图标已入库，重建图标需 Python 和 Pillow。
 
-版本 1.3.0 使用 `%LOCALAPPDATA%/key_flow`、`key_flow.exe`、`key_flow.log`、`key_flow_setup_1.3.0_x64.exe`。首次运行只在新配置不存在时复制旧产品配置，不删除或覆盖旧数据。历史路径字面量仅用于迁移兼容。旧产品的已安装副本不会因源码改名被自动删除，可在确认迁移完成后从系统设置卸载旧副本。
+版本 1.3.1 使用 `%LOCALAPPDATA%/key_flow`、`key_flow.exe`、`key_flow.log`、`key_flow_setup_1.3.1_x64.exe`。首次运行只在新配置不存在时复制旧产品配置，不删除或覆盖旧数据。历史路径字面量仅用于迁移兼容。旧产品的已安装副本不会因源码改名被自动删除，可在确认迁移完成后从系统设置卸载旧副本。
 
 Git 仅提交源码、文档和图标；构建输出、安装包、本地输入组件 DLL 与 `.artifacts` 均忽略。上传 GitHub 时推送仓库即可，不需要上传整个本地文件夹；本次没有创建远程仓库或推送。
 
@@ -90,3 +90,7 @@ Git 仅提交源码、文档和图标；构建输出、安装包、本地输入�
 ## 1.3.0 方案编辑
 
 方案编辑移入独立窗口，并分成触发、流程、重复三页。颜色设置仅在启用屏幕颜色触发时展开；取色/框选时最小化当前编辑窗口。流程类型明确分为单键重复和多键顺序执行，切换为单键时会确认后保留第一步。重复规则分为持续重复和限时重复。顶部运行状态使用文字与语义色条表达，不再在窗口标题中放置像素式状态字符。
+
+## 1.3.1 编辑窗口崩溃修复
+
+修正只读流程状态绑定到 WPF 单选按钮时的默认双向绑定错误。该错误会在打开编辑窗口布局期间抛出未处理异常；当前流程与重复规则状态均明确使用单向绑定，并由命令更新配置。
