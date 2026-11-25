@@ -134,7 +134,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public ICommand UseVerifiedPresetCommand { get; }
-    public ICommand ToggleProfileEnabledCommand { get; private set; } = null!;
+    public ICommand SetProfileEnabledCommand { get; private set; } = null!;
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "按下主键；组合键请先按住 Ctrl、Alt 或 Shift";
 
     public MainViewModel()
@@ -224,10 +224,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             SelectedProfile = preset;
             LastMessage = $"已新建“{preset.Name}”，请编辑方案并保存";
         }, _ => CanEdit);
-        ToggleProfileEnabledCommand = new RelayCommand(parameter =>
+        SetProfileEnabledCommand = new RelayCommand(parameter =>
         {
             if (parameter is not KeyProfile profile || !CanEdit) return;
-            profile.Enabled = !profile.Enabled;
             if (!profile.Enabled)
             {
                 _monitorCancellations.GetValueOrDefault(profile)?.Cancel();

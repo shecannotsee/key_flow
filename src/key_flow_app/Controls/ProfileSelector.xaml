@@ -55,9 +55,7 @@
       <ListBox.ItemTemplate><DataTemplate>
         <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" Margin="0,0,12,0"/>
-          <Button Grid.Column="1" Command="{Binding DataContext.ToggleProfileEnabledCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Margin="0" Padding="10,5">
-            <Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Content" Value="启用方案"/><Setter Property="Background" Value="#E9ECF1"/><Setter Property="Foreground" Value="#505865"/><Style.Triggers><DataTrigger Binding="{Binding Enabled}" Value="True"><Setter Property="Content" Value="✓ 已启用"/><Setter Property="Background" Value="#DBEFE1"/><Setter Property="Foreground" Value="#24653D"/></DataTrigger></Style.Triggers></Style></Button.Style>
-          </Button>
+          <ToggleButton Grid.Column="1" IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Command="{Binding DataContext.SetProfileEnabledCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource ProfileToggleSwitch}" ToolTip="开启或关闭此方案" AutomationProperties.Name="方案启用开关"/>
           <Button Grid.Column="2" Content="删除" Margin="8,0,0,0" Foreground="{StaticResource DangerRed}" Command="{Binding DataContext.DeleteProfileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}"/>
         </Grid>
       </DataTemplate></ListBox.ItemTemplate>
