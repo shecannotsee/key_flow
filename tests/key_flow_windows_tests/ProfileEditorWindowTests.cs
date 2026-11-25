@@ -28,6 +28,7 @@ public sealed class ProfileEditorWindowTests
                 {
                     Source = new Uri("/key_flow;component/Themes/AppleTheme.xaml", UriKind.Relative)
                 });
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/key_flow;component/Themes/FluentTheme.xaml", UriKind.Relative) });
                 window = new ProfileEditorWindow
                 {
                     DataContext = new EditorState(),
@@ -51,11 +52,24 @@ public sealed class ProfileEditorWindowTests
                 MainWorkspaceChecks.Run();
                 foreach (var step in new[] { 0, 1, 2 })
                 {
-                    window.DataContext = new EditorState { EditorStep = step };
-                    window.UpdateLayout();
-                    Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
-                    window.Opacity = 1;
-                    SaveVisual(window, $"editor-{step}.png");
+                    var editorState = new EditorState { EditorStep = step };
+                    if (step == 0) editorState.SelectedProfile.ColorTriggerEnabled = true;
+                    if (step == 2) { editorState.SelectedProfile.DurationSeconds = 6; editorState.SelectedProfile.DurationMilliseconds = 300; }
+                    window.DataContext = editorState;
+                    foreach (var size in new[] { (Width: 720d, Height: 640d), (Width: 560d, Height: 520d) })
+                    {
+                        window.Width = size.Width; window.Height = size.Height;
+                        window.UpdateLayout();
+                        Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                        var editorScroll = FindLogicalChildren<ScrollViewer>(window).Single(viewer => viewer.Name == "EditorScroll");
+                        var footer = FindLogicalChildren<Grid>(window).Single(grid => grid.Name == "EditorFooter");
+                        Assert.True(editorScroll.ActualHeight > 100);
+                        Assert.True(footer.ActualHeight > 0);
+                        Assert.True(footer.TranslatePoint(new Point(), window).Y >= editorScroll.TranslatePoint(new Point(), window).Y);
+                        VerifyEditorPageBindings(window, step);
+                        window.Opacity = 1;
+                        SaveVisual(window, $"editor-{step}-{size.Width}.png");
+                    }
                 }
             }
             catch (Exception exception) { failure = exception; }
@@ -70,6 +84,37 @@ public sealed class ProfileEditorWindowTests
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "Editor WPF smoke test timed out");
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private static void VerifyEditorPageBindings(ProfileEditorWindow window, int step)
+    {
+        if (step == 0)
+        {
+            var page = FindLogicalChildren<TriggerEditorPage>(window).Single();
+            Assert.NotNull(FindLogicalChildren<TextBox>(page).FirstOrDefault(box =>
+                BindingOperations.GetBinding(box, TextBox.TextProperty)?.Path.Path == "SelectedProfile.Name"));
+            Assert.Contains(FindLogicalChildren<CheckBox>(page), box => box.Content?.ToString() == "启用颜色变化触发");
+            Assert.Contains(FindLogicalChildren<Button>(page), button =>
+                BindingOperations.GetBinding(button, Button.CommandProperty)?.Path.Path == "CaptureActiveColorCommand");
+        }
+        else if (step == 1)
+        {
+            var page = FindLogicalChildren<WorkflowEditorPage>(window).Single();
+            var rows = FindLogicalChildren<ListBox>(page).Single();
+            Assert.Equal(2, rows.Items.Count);
+            Assert.Contains(FindLogicalChildren<RadioButton>(page), button => button.Content?.ToString() == "多个键顺序执行");
+            foreach (var command in new[] { "AddStepCommand", "RemoveStepCommand", "MoveStepUpCommand", "MoveStepDownCommand" })
+                Assert.Contains(FindLogicalChildren<Button>(page), button => BindingOperations.GetBinding(button, Button.CommandProperty)?.Path.Path == command);
+            Assert.Contains(FindVisualChildren<TextBox>(page), box => BindingOperations.GetBinding(box, TextBox.TextProperty)?.Path.Path == "WaitAfterMs");
+        }
+        else
+        {
+            var page = FindLogicalChildren<RepeatEditorPage>(window).Single();
+            Assert.Contains(FindLogicalChildren<RadioButton>(page), button => button.Content?.ToString() == "持续重复，直到停止");
+            Assert.Contains(FindLogicalChildren<RadioButton>(page), button => button.Content?.ToString() == "限时重复，到时间自动停止");
+            Assert.Contains(FindLogicalChildren<RadioButton>(page), button => button.Content?.ToString() == "重新计时");
+            Assert.Contains(FindLogicalChildren<RadioButton>(page), button => button.Content?.ToString() == "忽略重复触发");
+        }
     }
 
     private static void VerifyPreparationLayout()
@@ -192,6 +237,16 @@ public sealed class ProfileEditorWindowTests
         }
     }
 
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) yield return match;
+            foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
+        }
+    }
+
     private sealed class EditorState
     {
         public int EditorStep { get; init; }
@@ -201,10 +256,10 @@ public sealed class ProfileEditorWindowTests
         public bool UseToggleHotkey { get; set; }
         public KeyProfile SelectedProfile { get; } = new() { Name = "我的方案 1", SequenceMode = true, Steps = [new("E", 80), new("F", 100)], ColorTriggerEnabled = false };
 
-        public bool IsSingleKeyMode => true;
-        public bool IsSequenceMode => false;
-        public bool IsUnlimitedMode => true;
-        public bool IsTimedMode => false;
+        public bool IsSingleKeyMode => !SelectedProfile.SequenceMode;
+        public bool IsSequenceMode => SelectedProfile.SequenceMode;
+        public bool IsUnlimitedMode => SelectedProfile.TotalDurationSeconds <= 0;
+        public bool IsTimedMode => SelectedProfile.TotalDurationSeconds > 0;
     }
 
     private sealed class PreparationState

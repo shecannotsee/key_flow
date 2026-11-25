@@ -1,26 +1,27 @@
-<Window x:Class="key_flow_app.ProfileEditorWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:key_flow_app.Controls" Title="编辑方案 — key_flow" Width="720" Height="740" MinWidth="560" MinHeight="520" Background="{StaticResource PageBackground}" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
-  <Grid Margin="24">
+<Window x:Class="key_flow_app.ProfileEditorWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:key_flow_app.Controls" Title="编辑方案 — key_flow" Width="700" Height="620" MinWidth="560" MinHeight="520" Background="#FFFFFF" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Window.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="Themes/FluentTheme.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></Window.Resources>
+  <Grid Margin="20,16">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <DockPanel>
       <Button DockPanel.Dock="Right" Content="×" Command="{Binding CloseEditorCommand}" ToolTip="关闭编辑"/>
-      <StackPanel><TextBlock Text="编辑方案" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="{Binding SelectedProfile.Name}" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,0"/></StackPanel>
+      <StackPanel><TextBlock Text="编辑方案" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding SelectedProfile.Name}" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,0"/></StackPanel>
     </DockPanel>
-    <UniformGrid Grid.Row="1" Columns="3" Margin="0,18,0,18">
-      <Button Content="1  触发" Command="{Binding NavigateEditorCommand}" CommandParameter="0"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="0"><Setter Property="Background" Value="#DDEAFF"/><Setter Property="Foreground" Value="#245BC5"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
-      <Button Content="2  流程" Command="{Binding NavigateEditorCommand}" CommandParameter="1"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="1"><Setter Property="Background" Value="#DDEAFF"/><Setter Property="Foreground" Value="#245BC5"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
-      <Button Content="3  重复" Command="{Binding NavigateEditorCommand}" CommandParameter="2"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="2"><Setter Property="Background" Value="#DDEAFF"/><Setter Property="Foreground" Value="#245BC5"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
+    <UniformGrid Grid.Row="1" Columns="3" Margin="0,12,0,16">
+      <Button Content="1  触发" Command="{Binding NavigateEditorCommand}" CommandParameter="0"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="0"><Setter Property="Background" Value="#EAF1FA"/><Setter Property="Foreground" Value="#245FA9"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
+      <Button Content="2  流程" Command="{Binding NavigateEditorCommand}" CommandParameter="1"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="1"><Setter Property="Background" Value="#EAF1FA"/><Setter Property="Foreground" Value="#245FA9"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
+      <Button Content="3  重复" Command="{Binding NavigateEditorCommand}" CommandParameter="2"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="2"><Setter Property="Background" Value="#EAF1FA"/><Setter Property="Foreground" Value="#245FA9"/></DataTrigger></Style.Triggers></Style></Button.Style></Button>
     </UniformGrid>
-    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+    <ScrollViewer x:Name="EditorScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,12,0">
       <Grid>
         <controls:TriggerEditorPage><controls:TriggerEditorPage.Style><Style TargetType="controls:TriggerEditorPage"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="0"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></controls:TriggerEditorPage.Style></controls:TriggerEditorPage>
         <controls:WorkflowEditorPage><controls:WorkflowEditorPage.Style><Style TargetType="controls:WorkflowEditorPage"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="1"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></controls:WorkflowEditorPage.Style></controls:WorkflowEditorPage>
         <controls:RepeatEditorPage><controls:RepeatEditorPage.Style><Style TargetType="controls:RepeatEditorPage"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding EditorStep}" Value="2"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></controls:RepeatEditorPage.Style></controls:RepeatEditorPage>
       </Grid>
     </ScrollViewer>
-    <Grid Grid.Row="3" Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <Grid x:Name="EditorFooter" Grid.Row="3" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
       <Button Content="上一步" Command="{Binding PreviousEditorStepCommand}" HorizontalAlignment="Left"/>
-      <Button Grid.Column="1" Content="下一步" Command="{Binding NextEditorStepCommand}" Style="{StaticResource PrimaryButton}"/>
-      <Button Grid.Column="2" Content="保存方案" Command="{Binding SaveCommand}" Background="#EAF1FF" Foreground="#245BC5" Margin="8,0,0,0"/>
+      <Button Grid.Column="1" Content="下一步" Command="{Binding NextEditorStepCommand}" BorderThickness="1"/>
+      <Button Grid.Column="2" Content="保存方案" Command="{Binding SaveCommand}" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"/>
     </Grid>
   </Grid>
 </Window>
