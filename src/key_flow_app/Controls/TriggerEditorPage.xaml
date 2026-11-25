@@ -1,4 +1,5 @@
 <UserControl x:Class="key_flow_app.Controls.TriggerEditorPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:key_flow_app.Controls" xmlns:core="clr-namespace:key_flow_core;assembly=key_flow_core">
+<UserControl.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="../Themes/FluentTheme.xaml"/></ResourceDictionary.MergedDictionaries></ResourceDictionary></UserControl.Resources>
 <StackPanel IsEnabled="{Binding CanEdit}">
   <TextBlock Text="方案信息" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
   <TextBlock Text="方案名称" Margin="0,0,0,4"/>

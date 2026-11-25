@@ -69,11 +69,17 @@ internal static class MainWorkspaceChecks
             Save(control, "main-search-empty.png");
             search.Text = ""; Pump(host);
             var groupList = (ListBox)control.FindName("GroupsList");
+            var newGroup = (Button)control.FindName("NewGroupButton");
+            Assert.Same(state.NewGroupCommand, newGroup.Command);
+            Assert.Equal("＋ 新建", newGroup.Content);
             groupList.SelectedItem = groups[2]; Pump(host);
             Assert.Equal(5, list.Items.Count);
             Assert.All(list.Items.Cast<MainProfileRow>(), row => Assert.Contains(row.Profile.Id, groups[2].MemberIds));
             var groupButton = Descendants<Button>(control).Single(b => ReferenceEquals(b.Command, state.ToggleGroupCommand));
             Assert.Same(groups[2], groupButton.CommandParameter);
+            var deleteGroup = (Button)control.FindName("DeleteGroupButton");
+            Assert.Same(state.DeleteGroupCommand, deleteGroup.Command);
+            Assert.Same(groups[2], deleteGroup.CommandParameter);
             Save(control, "main-group.png");
             state.IsMonitoring = true; state.Notify(); Pump(host); Save(control, "main-monitoring.png");
             var empty = new WorkspaceState([], []);

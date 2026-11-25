@@ -28,7 +28,6 @@ public sealed class ProfileEditorWindowTests
                 {
                     Source = new Uri("/key_flow;component/Themes/AppleTheme.xaml", UriKind.Relative)
                 });
-                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/key_flow;component/Themes/FluentTheme.xaml", UriKind.Relative) });
                 window = new ProfileEditorWindow
                 {
                     DataContext = new EditorState(),
