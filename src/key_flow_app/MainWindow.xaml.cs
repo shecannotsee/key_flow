@@ -30,8 +30,9 @@ public partial class MainWindow : Window
             {
                 if (_viewModel.IsInitialized)
                 {
-                    MinWidth = 540; MinHeight = 460;
-                    if (WindowState == WindowState.Normal) { Width = 700; Height = 800; }
+                    ResizeMode = ResizeMode.CanResize;
+                    MinWidth = 760; MinHeight = 560;
+                    if (WindowState == WindowState.Normal) { Width = 980; Height = 720; }
                 }
             }
         };

@@ -86,7 +86,8 @@ public sealed class ProfileEditorWindowTests
             var list = FindLogicalChildren<ListBox>(selector).Single();
             Assert.Equal(3, list.Items.Count);
             Assert.Same(second, list.SelectedItem);
-            Assert.Empty(FindLogicalChildren<TextBox>(selector)); // Rename belongs to the editor.
+            var searchBox = FindLogicalChildren<TextBox>(selector).Single();
+            Assert.Equal("按方案名或分组搜索", searchBox.ToolTip);
             Assert.False(second.IsInActivationPool);
             var colorSwitch = FindLogicalChildren<CheckBox>(new key_flow_app.Controls.TriggerEditorPage())
                 .Single(box => box.Content?.ToString() == "启用颜色变化触发");

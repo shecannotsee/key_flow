@@ -6,7 +6,20 @@ namespace key_flow_app.Controls;
 
 public partial class ProfileSelector : UserControl
 {
-    public ProfileSelector() => InitializeComponent();
+    public ProfileSelector()
+    {
+        InitializeComponent();
+        Loaded += (_, _) => UseProfilesFallbackWhenNeeded();
+        DataContextChanged += (_, _) => UseProfilesFallbackWhenNeeded();
+    }
+
+    private void UseProfilesFallbackWhenNeeded()
+    {
+        if (ProfilesList.ItemsSource is not null || DataContext is null) return;
+        var property = DataContext.GetType().GetProperty("Profiles");
+        if (property?.GetValue(DataContext) is System.Collections.IEnumerable profiles)
+            ProfilesList.ItemsSource = profiles;
+    }
 
     private void ProfilesSelectionChanged(object sender, SelectionChangedEventArgs e)
     {

@@ -67,6 +67,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
 
     public List<KeyProfile> Profiles { get; private set; }
+    private string _profileSearch = "";
+    public string ProfileSearch
+    {
+        get => _profileSearch;
+        set { _profileSearch = value ?? ""; OnPropertyChanged(); OnPropertyChanged(nameof(FilteredProfiles)); }
+    }
+    public IEnumerable<KeyProfile> FilteredProfiles => string.IsNullOrWhiteSpace(ProfileSearch)
+        ? Profiles
+        : Profiles.Where(profile => profile.Name.Contains(ProfileSearch, StringComparison.OrdinalIgnoreCase)
+            || profile.GroupName.Contains(ProfileSearch, StringComparison.OrdinalIgnoreCase));
     public IEnumerable<KeyProfile> ParticipatingProfiles => Profiles.Where(IsParticipating);
     public bool HasParticipatingProfiles => Profiles.Any(IsParticipating);
     public string SelectedProfileLabel => Profiles.Contains(SelectedProfile) ? SelectedProfile.Name : "暂无方案，请新建";
@@ -586,6 +596,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             PropertyChanged?.Invoke(this, new(nameof(SelectedProfileLabel)));
             PropertyChanged?.Invoke(this, new(nameof(ActivationPoolStatus)));
+            PropertyChanged?.Invoke(this, new(nameof(FilteredProfiles)));
         }
     }
 }
