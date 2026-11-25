@@ -12,16 +12,16 @@
   <ListBox x:Name="StepsList" ItemsSource="{Binding SelectedProfile.Steps}" SelectedItem="{Binding SelectedStep}" AlternationCount="2147483647" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,0,0,5"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Row" Padding="{TemplateBinding Padding}" BorderThickness="1" BorderBrush="#E3EAF3" Background="#FBFCFE" CornerRadius="14"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="#EDF4FF"/><Setter TargetName="Row" Property="BorderBrush" Value="#C9DCF7"/></Trigger><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Row" Property="BorderBrush" Value="#8EB6EA"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
     <ListBox.ItemTemplate><DataTemplate><Grid>
-      <Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="64"/><ColumnDefinition Width="112"/><ColumnDefinition/></Grid.ColumnDefinitions>
-      <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="40"/></Grid.RowDefinitions>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="34"/><ColumnDefinition Width="66"/><ColumnDefinition Width="150"/><ColumnDefinition/></Grid.ColumnDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="42"/><RowDefinition Height="42"/></Grid.RowDefinitions>
       <TextBlock Text="{Binding (ItemsControl.AlternationIndex), RelativeSource={RelativeSource AncestorType=ListBoxItem}, Converter={StaticResource StepNumber}}" VerticalAlignment="Center" Foreground="{StaticResource MainMuted}"/>
       <TextBlock Grid.Column="1" Text="按键" VerticalAlignment="Center"/>
       <Button Grid.Column="2" Content="{Binding Key}" Command="{Binding DataContext.CaptureSequenceCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource KeyCaptureButton}" Margin="0,0,8,0" ToolTip="点击后录入单键或组合键"/>
       <TextBlock Grid.Column="3" Text="按下并释放 · click" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
       <TextBlock Grid.Row="1" Text="↓" Foreground="{StaticResource MainMuted}" VerticalAlignment="Center"/>
       <TextBlock Grid.Row="1" Grid.Column="1" Text="等待" VerticalAlignment="Center"/>
-      <TextBox Grid.Row="1" Grid.Column="2" Margin="0,0,8,0" Text="{Binding WaitAfterMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}" HorizontalContentAlignment="Right" AutomationProperties.Name="到下一键的等待时间"/>
-      <TextBlock Grid.Row="1" Grid.Column="3" Text="毫秒，然后执行下一键" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+      <TextBox Grid.Row="1" Grid.Column="2" Width="150" MinWidth="150" Margin="0,0,8,0" Text="{Binding WaitAfterMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}" HorizontalContentAlignment="Right" ToolTip="{Binding WaitAfterMs}" AutomationProperties.Name="到下一键的等待时间（毫秒）"/>
+      <TextBlock Grid.Row="1" Grid.Column="3" Text="毫秒，然后执行下一键" TextWrapping="Wrap" Style="{StaticResource HintText}" VerticalAlignment="Center" Margin="8,0,0,0"/>
     </Grid></DataTemplate></ListBox.ItemTemplate>
   </ListBox>
   <TextBlock Text="↻ 最后一个等待结束后回到首键，直到限时结束或停止。" Style="{StaticResource HintText}" Margin="8,8,0,0"/>

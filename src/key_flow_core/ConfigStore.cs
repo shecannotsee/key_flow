@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 9;
+    public const int CurrentVersion = 10;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -13,6 +13,7 @@ public sealed class JsonConfigStore(string path)
         using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
         var config = document.RootElement.Deserialize<AppConfig>(Options) ?? CreateDefault();
         var version = document.RootElement.TryGetProperty("Version", out var stored) ? stored.GetInt32() : 1;
+        if (version > CurrentVersion) throw new InvalidDataException($"不支持的配置版本: {version}");
         if (version is 0 or 1)
         {
             // v1 meant 50ms down + WaitAfterMs after release. Preserve old timing.
@@ -60,12 +61,16 @@ public sealed class JsonConfigStore(string path)
             config.Groups = (config.Profiles ?? []).Where(profile => profile.GroupName != "未分组")
                 .GroupBy(profile => profile.GroupName)
                 .Select(group => new ProfileGroup { Name = group.Key, MemberIds = group.Select(profile => profile.Id).ToList() }).ToList();
+        NormalizeGroups(config, version);
         Validate(config);
         return config;
     }
 
     public async Task SaveAsync(AppConfig config)
     {
+        if (config.Version > CurrentVersion)
+            throw new InvalidDataException($"不支持的配置版本: {config.Version}");
+        NormalizeGroups(config, config.Version);
         Validate(config);
         Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -79,11 +84,69 @@ public sealed class JsonConfigStore(string path)
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    private static AppConfig CreateDefault() => new()
+    private static AppConfig CreateDefault()
     {
-        Version = CurrentVersion,
-        Profiles = [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }]
-    };
+        var profile = new KeyProfile { Name = "我的方案 1", Enabled = true, IsInActivationPool = true, GroupName = "默认配置组", Steps = [new("D8", 80)] };
+        return new AppConfig
+        {
+            Version = CurrentVersion,
+            Profiles = [profile],
+            Groups = [new ProfileGroup { Name = "默认配置组", IsDefault = true, Participates = false, MemberIds = [profile.Id] }]
+        };
+    }
+
+    private static void NormalizeGroups(AppConfig config, int version)
+    {
+        config.Profiles ??= [];
+        config.Groups ??= [];
+        var defaultGroup = config.Groups.FirstOrDefault(group => group.IsDefault)
+            ?? config.Groups.FirstOrDefault(group => group.Name == "默认配置组");
+        if (defaultGroup is null)
+        {
+            defaultGroup = new ProfileGroup { Name = "默认配置组", IsDefault = true };
+            config.Groups.Insert(0, defaultGroup);
+        }
+        else defaultGroup.IsDefault = true;
+
+        // Migrate the old independent profile switch into both the new enabled state and,
+        // only for groups that relied on it, the owning group's activation state.
+        if (version < CurrentVersion)
+            foreach (var group in config.Groups.Where(group => !group.Participates))
+                if (config.Profiles.Any(profile => group.MemberIds.Contains(profile.Id) && profile.IsInActivationPool))
+                    group.Participates = true;
+        if (version < CurrentVersion)
+            foreach (var profile in config.Profiles)
+                profile.Enabled = profile.IsInActivationPool || config.Groups.Any(group => group.Participates && group.MemberIds.Contains(profile.Id));
+
+        var defaultSeen = false;
+        foreach (var group in config.Groups)
+        {
+            if (!group.IsDefault && group.Name == "默认配置组" && !defaultSeen) group.IsDefault = true;
+            if (group.IsDefault)
+            {
+                if (defaultSeen) group.IsDefault = false;
+                else defaultSeen = true;
+            }
+        }
+        foreach (var group in config.Groups)
+            group.MemberIds ??= [];
+        var assigned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in config.Groups)
+            foreach (var id in group.MemberIds.ToArray())
+                if (!config.Profiles.Any(profile => profile.Id == id) || !assigned.Add(id)) group.MemberIds.Remove(id);
+        foreach (var profile in config.Profiles)
+        {
+            var owner = config.Groups.FirstOrDefault(group => group.MemberIds.Contains(profile.Id));
+            if (owner is null)
+            {
+                owner = config.Groups.FirstOrDefault(group => group.Name == profile.GroupName) ?? defaultGroup;
+                owner.MemberIds.Add(profile.Id);
+            }
+            profile.GroupName = owner.Name;
+        }
+        foreach (var group in config.Groups.Where(group => group != defaultGroup)) group.IsDefault = false;
+        config.Version = CurrentVersion;
+    }
 
     private static void Validate(AppConfig config)
     {
@@ -94,10 +157,14 @@ public sealed class JsonConfigStore(string path)
             throw new InvalidDataException("配置列表不能为空值");
         if (config.Groups is null || config.Groups.Any(group => group is null || string.IsNullOrWhiteSpace(group.Name) || group.MemberIds is null))
             throw new InvalidDataException("配置组无效");
+        if (config.Groups.Count(group => group.IsDefault) != 1) throw new InvalidDataException("必须且只能存在一个默认配置组");
         if (config.Profiles.Any(profile => profile is null || string.IsNullOrWhiteSpace(profile.Id)) || config.Profiles.Select(profile => profile.Id).Distinct().Count() != config.Profiles.Count)
             throw new InvalidDataException("方案标识无效或重复");
         var ids = config.Profiles.Select(profile => profile.Id).ToHashSet();
         if (config.Groups.Any(group => group.MemberIds.Any(id => !ids.Contains(id)))) throw new InvalidDataException("配置组包含不存在的方案");
+        var memberships = config.Groups.SelectMany(group => group.MemberIds).ToArray();
+        if (memberships.Distinct(StringComparer.OrdinalIgnoreCase).Count() != memberships.Length || ids.Except(memberships, StringComparer.OrdinalIgnoreCase).Any())
+            throw new InvalidDataException("每个方案必须且只能属于一个配置组");
         foreach (var profile in config.Profiles)
         {
             AutomationValidation.Validate(profile);

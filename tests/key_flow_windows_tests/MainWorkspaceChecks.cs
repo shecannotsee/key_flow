@@ -159,7 +159,7 @@ internal static class MainWorkspaceChecks
         public bool MainHasGroup => MainGroup is not null;
         public string MainScopeTitle => MainGroup?.Name ?? "全部配置";
         public string MainGroupAction => "激活此组";
-        public string MainProfileAction => "单独激活";
+        public string MainProfileAction => "启用方案";
         public string MainState => IsRunning ? "运行中" : IsMonitoring ? "颜色监听中" : "已停止";
         public string MainActivity => IsRunning ? "正在执行：我的配置 01" : IsMonitoring ? "等待颜色条件满足" : "当前没有方案执行";
         public string MainCounts => $"{MainParticipants.Count()} 个已激活 · {(IsRunning ? 1 : 0)} 个执行或排队";
@@ -185,7 +185,7 @@ internal static class MainWorkspaceChecks
         public ICommand DuplicateProfileCommand { get; } = new RelayCommand(_ => { });
         public ICommand DeleteProfileCommand { get; } = new RelayCommand(_ => { });
         public ICommand OpenEditorCommand { get; } = new RelayCommand(_ => { });
-        public ICommand ToggleActivationPoolCommand { get; } = new RelayCommand(_ => { });
+        public ICommand ToggleProfileEnabledCommand { get; } = new RelayCommand(_ => { });
         public event PropertyChangedEventHandler? PropertyChanged;
         public void Notify() => PropertyChanged?.Invoke(this, new(null));
     }

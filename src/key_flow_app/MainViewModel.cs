@@ -30,11 +30,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly IInputLogger _logger;
     private readonly RunFeedback _feedback = new();
     private bool _isRunning;
+    private bool _isListening;
     private bool _isPinned;
     private ProfileEditorWindow? _editorWindow;
     private int _editorStep;
     private int _validationErrors;
     public bool IsRunning => _isRunning;
+    public bool IsListening => _isListening;
     public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
     public string WindowTitle => IsRunning ? "正在运行 — key_flow" : IsMonitoring ? "正在监听 — key_flow" : "已停止 — key_flow";
     public int EditorStep { get => _editorStep; private set { _editorStep = Math.Clamp(value, 0, 2); OnPropertyChanged(); OnPropertyChanged(nameof(IsFirstEditorStep)); OnPropertyChanged(nameof(IsLastEditorStep)); } }
@@ -122,6 +124,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand SetWorkflowModeCommand { get; private set; } = null!;
     public ICommand SetRepeatModeCommand { get; private set; } = null!;
     public ICommand ArmCommand { get; }
+    public ICommand StartListeningCommand { get; private set; } = null!;
     public ICommand StopCommand { get; }
     public ICommand AddStepCommand { get; }
     public ICommand RemoveStepCommand { get; }
@@ -131,7 +134,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CaptureStopCommand { get; }
     public ICommand CaptureSequenceCommand { get; }
     public ICommand UseVerifiedPresetCommand { get; }
-    public ICommand ToggleActivationPoolCommand { get; private set; } = null!;
+    public ICommand ToggleProfileEnabledCommand { get; private set; } = null!;
     public string CaptureText => _captureMode == CaptureMode.None ? "" : "按下主键；组合键请先按住 Ctrl、Alt 或 Shift";
 
     public MainViewModel()
@@ -144,11 +147,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or System.Text.Json.JsonException)
         {
-            loaded = new AppConfig { Profiles = [new KeyProfile { Name = "我的方案 1", IsInActivationPool = true, Steps = [new("D8", 80)] }] };
+            var fallback = new KeyProfile { Name = "我的方案 1", Enabled = true, IsInActivationPool = true, GroupName = "默认配置组", Steps = [new("D8", 80)] };
+            loaded = new AppConfig { Profiles = [fallback], Groups = [new ProfileGroup { Name = "默认配置组", IsDefault = true, MemberIds = [fallback.Id] }] };
             _configLoadMessage = $"配置加载失败，已使用默认配置：{exception.Message}";
         }
         Profiles = loaded.Profiles;
         Groups = loaded.Groups;
+        _mainGroup = Groups.FirstOrDefault(group => group.IsDefault);
         _selectedProfile = Profiles.FirstOrDefault() ?? new KeyProfile();
         _selectedProfile.PropertyChanged += SelectedProfileChanged;
         var logger = _logger = new FileInputLogger(AppPaths.Log);
@@ -206,26 +211,37 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         SaveCommand = new RelayCommand(async _ => await SaveAsync(), _ => CanEdit && _validationErrors == 0);
         SetupEditorCommands();
         SetupGroupCommands();
-        ArmCommand = new RelayCommand(_ => StartSequence(), _ => CanEdit && IsParticipating(SelectedProfile) && _validationErrors == 0 && _captureMode == CaptureMode.None && SelectedProfile.Steps.Count > 0);
+        StartListeningCommand = new RelayCommand(_ => StartListening(), _ => IsInitialized && !_isListening && !_disposed);
+        ArmCommand = new RelayCommand(_ => StartListening(), _ => IsInitialized && !_isListening && !_disposed);
         UseVerifiedPresetCommand = new RelayCommand(_ =>
         {
-            var preset = new KeyProfile { Name = ProfileOperations.NextProfileName(Profiles), IsInActivationPool = false, Steps = [new("D8", 80)] };
+            var preset = new KeyProfile { Name = ProfileOperations.NextProfileName(Profiles), Enabled = true, Steps = [new("D8", 80)] };
+            var targetGroup = Groups.FirstOrDefault(group => group == MainGroup) ?? Groups.FirstOrDefault(group => group.IsDefault);
+            targetGroup?.MemberIds.Add(preset.Id);
+            if (targetGroup is not null) preset.GroupName = targetGroup.Name;
             Profiles = [.. Profiles, preset];
             OnPropertyChanged(nameof(Profiles)); OnPropertyChanged(nameof(ActivationPoolStatus));
             SelectedProfile = preset;
             LastMessage = $"已新建“{preset.Name}”，请编辑方案并保存";
         }, _ => CanEdit);
-        ToggleActivationPoolCommand = new RelayCommand(parameter =>
+        ToggleProfileEnabledCommand = new RelayCommand(parameter =>
         {
             if (parameter is not KeyProfile profile || !CanEdit) return;
-            profile.IsInActivationPool = !profile.IsInActivationPool;
+            profile.Enabled = !profile.Enabled;
+            if (!profile.Enabled)
+            {
+                _monitorCancellations.GetValueOrDefault(profile)?.Cancel();
+                _activationPool.Cancel(profile);
+            }
+            else if (_isListening && profile.ColorTriggerEnabled && ProfileParticipation.IsEligible(profile, Groups))
+                _ = StartMonitoringAsync(profile);
             ConfigureHotkeys();
             OnPropertyChanged(nameof(ActivationPoolStatus));
-            LastMessage = profile.IsInActivationPool
-                ? $"方案“{profile.Name}”已单独参与触发；保存配置以保留设置"
-                : $"方案“{profile.Name}”已取消单独参与（仍可能由配置组启用）；保存配置以保留设置";
+            LastMessage = profile.Enabled
+                ? $"方案“{profile.Name}”已启用；需同时激活所属配置组才会触发"
+                : $"方案“{profile.Name}”已关闭，不会参与触发";
         }, parameter => CanEdit && parameter is KeyProfile profile && Profiles.Contains(profile));
-        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
+        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _isListening || _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null && (!SelectedProfile.SequenceMode || SelectedProfile.Steps.Count > 2));
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
@@ -245,6 +261,20 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             _editorWindow?.Close();
         }
         catch (Exception exception) { LastMessage = $"保存失败：{exception.Message}"; }
+    }
+
+    private void StartListening()
+    {
+        if (!IsInitialized || _disposed || _isListening) return;
+        _isListening = true;
+        OnPropertyChanged(nameof(IsListening));
+        ConfigureHotkeys();
+        foreach (var profile in Profiles.Where(profile => ProfileParticipation.IsEligible(profile, Groups) && profile.ColorTriggerEnabled).ToArray())
+            _ = StartMonitoringAsync(profile);
+        StateText = "监听中";
+        LastMessage = "正在监听已激活配置组中的已启用方案";
+        OnPropertyChanged(nameof(WindowTitle));
+        CommandManager.InvalidateRequerySuggested();
     }
 
     private void SetupEditorCommands()
@@ -384,17 +414,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!IsInitialized) { HotkeyStatus = "请先点击“准备使用”，快捷键尚未启用"; return; }
         _systemHotkeys.Bind(3, 0x79, 0x6); // Ctrl+Shift+F10; F12 is reserved.
         var id = 100;
-        foreach (var profile in Profiles.Where(IsParticipating))
+        foreach (var profile in _isListening ? Profiles.Where(IsParticipating) : [])
         {
             BindAction(id++, profile, profile.StartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
             if (!profile.ToggleHotkey) BindAction(id++, profile, profile.StopHotkey, isStop: true, isToggle: false);
             if (!string.IsNullOrWhiteSpace(profile.AlternateStartHotkey))
                 BindAction(id++, profile, profile.AlternateStartHotkey, isStop: false, isToggle: profile.ToggleHotkey);
         }
-        var poolCount = Profiles.Count(IsParticipating);
-        HotkeyStatus = poolCount == 0
-            ? "暂无参与触发的方案，未监听方案快捷键 · 按键继续传递"
-            : $"正在监听 {poolCount} 个参与触发方案的快捷键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
+        var poolCount = _isListening ? Profiles.Count(IsParticipating) : 0;
+        HotkeyStatus = !_isListening ? "监听已停止 · Ctrl+Shift+F10 紧急停止 · 按键继续传递" : poolCount == 0
+            ? "没有已激活组中的启用方案 · 按键继续传递"
+            : $"正在监听 {poolCount} 个已启用方案 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
         _logger.Info(HotkeyStatus);
     }
 
@@ -412,7 +442,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void StartSequence()
     {
         if (!CanEdit || _captureMode != CaptureMode.None) return;
-        if (!IsParticipating(SelectedProfile)) { LastMessage = "请先将所选方案设为参与触发"; return; }
+        if (!IsParticipating(SelectedProfile)) { LastMessage = "请先激活所属配置组并启用所选方案"; return; }
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
@@ -422,7 +452,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void QueueProfileActivation(KeyProfile source, string origin)
     {
-        if (!IsInitialized || _disposed || _captureMode != CaptureMode.None || !IsParticipating(source)) return;
+        if (!IsInitialized || !_isListening || _disposed || _captureMode != CaptureMode.None || !IsParticipating(source)) return;
         try
         {
             ProfileOperations.ValidateForRepeat([source]);

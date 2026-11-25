@@ -226,14 +226,14 @@ public sealed class AutomationTests
             var config = await store.LoadAsync();
             Assert.Equal(JsonConfigStore.CurrentVersion, config.Version);
             var profile = config.Profiles[0];
-            Assert.Equal("未分组", profile.GroupName);
+            Assert.Equal("默认配置组", profile.GroupName);
             Assert.Equal(80, profile.Steps[0].WaitAfterMs);
             Assert.Equal(30, profile.Steps[0].HoldMs);
             Assert.True(profile.IsInActivationPool);
             profile.GroupName = "  配套方案  ";
             await store.SaveAsync(config);
             var loaded = (await store.LoadAsync()).Profiles[0];
-            Assert.Equal("配套方案", loaded.GroupName);
+            Assert.Equal("默认配置组", loaded.GroupName);
             Assert.Equal("Existing", loaded.Name);
             loaded.GroupName = " ";
             Assert.Equal("未分组", loaded.GroupName);

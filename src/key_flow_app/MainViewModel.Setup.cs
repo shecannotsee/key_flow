@@ -25,7 +25,10 @@ public sealed partial class MainViewModel
         DuplicateProfileCommand = new RelayCommand(_ =>
         {
             var copy = ProfileOperations.Copy(SelectedProfile);
-            copy.IsInActivationPool = false;
+            copy.Enabled = true;
+            var targetGroup = Groups.FirstOrDefault(group => group == MainGroup) ?? Groups.FirstOrDefault(group => group.IsDefault);
+            targetGroup?.MemberIds.Add(copy.Id);
+            if (targetGroup is not null) copy.GroupName = targetGroup.Name;
             Profiles = [.. Profiles, copy];
             OnPropertyChanged(nameof(Profiles)); SelectedProfile = copy;
             LastMessage = "已复制配置；点击保存写入本地";
@@ -53,7 +56,7 @@ public sealed partial class MainViewModel
             var updated = new AppConfig
             {
                 Profiles = Profiles.ToList(),
-                Groups = Groups.Select(group => new ProfileGroup { Id = group.Id, Name = group.Name, Participates = group.Participates, MemberIds = group.MemberIds.ToList() }).ToList()
+                Groups = Groups.Select(group => new ProfileGroup { Id = group.Id, Name = group.Name, IsDefault = group.IsDefault, Participates = group.Participates, MemberIds = group.MemberIds.ToList() }).ToList()
             };
             ProfileParticipation.Remove(updated, profile);
             await _store.SaveAsync(updated);

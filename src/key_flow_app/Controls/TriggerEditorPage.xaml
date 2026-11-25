@@ -3,7 +3,7 @@
 <StackPanel IsEnabled="{Binding CanEdit}">
   <TextBlock Text="方案信息" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
   <TextBlock Text="方案名称" Margin="0,0,0,4"/>
-  <TextBox Text="{Binding SelectedProfile.Name, UpdateSourceTrigger=PropertyChanged}" MaxLength="120" Margin="0,0,0,10"/>
+  <TextBox Text="{Binding SelectedProfile.Name, UpdateSourceTrigger=PropertyChanged}" MaxLength="120" MinWidth="260" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" ToolTip="{Binding SelectedProfile.Name}" AutomationProperties.Name="方案名称" Margin="0,0,0,10"/>
   <TextBlock Text="快捷键触发" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
   <controls:HotkeyEditor/>
   <TextBlock Text="{Binding CaptureText}" Foreground="{StaticResource AccentBlue}" Margin="0,8,0,0"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding CaptureText}" Value="按下主键；组合键请先按住 Ctrl、Alt 或 Shift"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>

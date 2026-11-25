@@ -25,9 +25,9 @@ public sealed class MainPresentationTests
     [Fact]
     public void GroupActivationAndExecutionRemainDistinctAndRowsKeepIdentity()
     {
-        var profile = new KeyProfile { Name = "Alpha", StartHotkey = "Shift+1" };
+        var profile = new KeyProfile { Name = "Alpha", StartHotkey = "Shift+1", Enabled = true };
         var row = new MainProfileRow(profile, true, "空闲");
-        Assert.Equal("组内激活", row.Participation);
+        Assert.Equal("已启用 · 组已激活", row.Participation);
         Assert.False(row.HasActivity);
         var notifications = 0;
         row.PropertyChanged += (_, _) => notifications++;
@@ -38,7 +38,7 @@ public sealed class MainPresentationTests
         row.Refresh(false, "空闲");
         Assert.Equal("Renamed", row.Name);
         Assert.Equal("Shift+1", row.Trigger);
-        Assert.Equal("未激活", row.Participation);
+        Assert.Equal("已启用 · 等待组激活", row.Participation);
         Assert.False(row.HasActivity);
         Assert.Equal(2, notifications);
     }

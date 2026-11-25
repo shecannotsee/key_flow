@@ -15,6 +15,9 @@ public sealed partial class MainViewModel
 
     private void StopEverything(string message)
     {
+        _isListening = false;
+        OnPropertyChanged(nameof(IsListening));
+        ConfigureHotkeys();
         foreach (var cancellation in _monitorCancellations.Values.ToArray()) cancellation.Cancel();
         _activationPool.CancelAll();
         _runtime.Stop(message);
@@ -22,7 +25,7 @@ public sealed partial class MainViewModel
 
     private async Task StartMonitoringAsync(KeyProfile source)
     {
-        if (!IsInitialized || _disposed || _profileBusy || !IsParticipating(source) || _monitorCancellations.ContainsKey(source)) return;
+        if (!IsInitialized || !_isListening || _disposed || _profileBusy || !IsParticipating(source) || !source.ColorTriggerEnabled || _monitorCancellations.ContainsKey(source)) return;
         try { ProfileOperations.ValidateForRepeat([source]); }
         catch (InvalidDataException exception) { RejectStart(exception.Message); return; }
 

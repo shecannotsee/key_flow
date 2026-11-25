@@ -95,6 +95,26 @@ public sealed class ActivationPool : IDisposable
         Changed?.Invoke();
     }
 
+    public void Cancel(object coalesceKey)
+    {
+        lock (gate)
+        {
+            var retained = new Queue<Request>();
+            while (requests.TryDequeue(out var request))
+            {
+                if (ReferenceEquals(request.CoalesceKey, coalesceKey))
+                {
+                    request.Completion.TrySetCanceled();
+                    request.Window.Dispose();
+                }
+                else retained.Enqueue(request);
+            }
+            while (retained.TryDequeue(out var request)) requests.Enqueue(request);
+            if (ReferenceEquals(currentRequest?.CoalesceKey, coalesceKey)) current?.Cancel();
+        }
+        Changed?.Invoke();
+    }
+
     private async Task ProcessAsync()
     {
         while (true)

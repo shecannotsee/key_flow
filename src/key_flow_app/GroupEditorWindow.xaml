@@ -1,8 +1,7 @@
 <Window x:Class="key_flow_app.GroupEditorWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="编辑配置组 — key_flow" Width="540" Height="580" MinWidth="440" MinHeight="380" WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="{StaticResource PageBackground}">
   <Grid Margin="24"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-    <StackPanel><TextBlock Text="编辑配置组" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="选入搭配使用的方案，再统一开启或关闭组的参与状态。一个方案可以加入多个组。" Foreground="{StaticResource TextSecondary}" Margin="0,8,0,16"/></StackPanel>
-    <StackPanel Grid.Row="1"><TextBlock Text="配置组名称" Margin="0,0,0,6"/><TextBox x:Name="GroupNameBox" MaxLength="120"/><TextBlock Text="选择成员方案" FontWeight="SemiBold" Margin="0,16,0,8"/></StackPanel>
-    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto"><ItemsControl x:Name="MembersList"><ItemsControl.ItemTemplate><DataTemplate><Border Background="White" CornerRadius="8" Padding="12" Margin="0,0,0,6"><CheckBox Content="{Binding Profile.Name}" IsChecked="{Binding Included}"/></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0"><Button Content="取消" IsCancel="True"/><Button Content="应用配置组" Click="ApplyClick" Style="{StaticResource PrimaryButton}"/></StackPanel>
+    <StackPanel><TextBlock Text="编辑配置组" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="配置组是统一启用和停用方案的单位。每个方案只属于一个配置组。" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16"/></StackPanel>
+    <StackPanel Grid.Row="1"><TextBlock Text="配置组名称" Margin="0,0,0,6"/><TextBox x:Name="GroupNameBox" MaxLength="120"/></StackPanel>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0"><Button Content="取消" IsCancel="True"/><Button Content="保存名称" Click="ApplyClick" Style="{StaticResource PrimaryButton}"/></StackPanel>
   </Grid>
 </Window>

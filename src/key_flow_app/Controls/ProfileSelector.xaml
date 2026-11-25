@@ -4,8 +4,8 @@
     <Border Background="#EFF8F2" BorderBrush="#CDE5D5" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,18">
       <StackPanel>
         <TextBlock Text="参与触发的方案" FontSize="15" FontWeight="SemiBold" Foreground="#24653D"/>
-        <TextBlock Text="由配置组或单独开启的方案汇总在这里；同一方案只响应一次。" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,8"/>
-        <TextBlock Text="尚未添加。在下方方案右侧点击“参与触发”。" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap">
+        <TextBlock Text="仅显示已激活配置组中已启用的方案。" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,8"/>
+        <TextBlock Text="暂无可触发方案。请激活配置组并启用方案。" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap">
           <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding HasParticipatingProfiles}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
         </TextBlock>
         <ScrollViewer MaxHeight="130" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -29,7 +29,7 @@
           <Border Background="White" CornerRadius="8" Padding="10" Margin="0,0,0,8"><StackPanel>
             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}"/>
             <TextBlock FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,3,0,8"><Run Text="{Binding MemberIds.Count, Mode=OneWay}"/><Run Text=" 个方案"/></TextBlock>
-            <WrapPanel><Button Content="参与触发" Command="{Binding DataContext.ToggleGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Padding="8,4"><Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="#E9ECF1"/><Style.Triggers><DataTrigger Binding="{Binding Participates}" Value="True"><Setter Property="Content" Value="✓ 已参与"/><Setter Property="Background" Value="#DBEFE1"/><Setter Property="Foreground" Value="#24653D"/></DataTrigger></Style.Triggers></Style></Button.Style></Button><Button Content="编辑" Command="{Binding DataContext.EditGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Padding="8,4"/><Button Content="删除" Command="{Binding DataContext.DeleteGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Padding="8,4" Foreground="{StaticResource DangerRed}"/></WrapPanel>
+            <WrapPanel><Button Content="切换组激活" Command="{Binding DataContext.ToggleGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Padding="8,4"/><Button Content="编辑" Command="{Binding DataContext.EditGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Padding="8,4"/><Button Content="删除" Command="{Binding DataContext.DeleteGroupCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Padding="8,4" Foreground="{StaticResource DangerRed}"/></WrapPanel>
           </StackPanel></Border>
         </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
       </DockPanel></Border>
@@ -55,8 +55,8 @@
       <ListBox.ItemTemplate><DataTemplate>
         <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" Margin="0,0,12,0"/>
-          <Button Grid.Column="1" Command="{Binding DataContext.ToggleActivationPoolCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Margin="0" Padding="10,5">
-            <Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Content" Value="单独参与"/><Setter Property="Background" Value="#E9ECF1"/><Setter Property="Foreground" Value="#505865"/><Style.Triggers><DataTrigger Binding="{Binding IsInActivationPool}" Value="True"><Setter Property="Content" Value="✓ 单独已参与"/><Setter Property="Background" Value="#DBEFE1"/><Setter Property="Foreground" Value="#24653D"/></DataTrigger></Style.Triggers></Style></Button.Style>
+          <Button Grid.Column="1" Command="{Binding DataContext.ToggleProfileEnabledCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Margin="0" Padding="10,5">
+            <Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Content" Value="启用方案"/><Setter Property="Background" Value="#E9ECF1"/><Setter Property="Foreground" Value="#505865"/><Style.Triggers><DataTrigger Binding="{Binding Enabled}" Value="True"><Setter Property="Content" Value="✓ 已启用"/><Setter Property="Background" Value="#DBEFE1"/><Setter Property="Foreground" Value="#24653D"/></DataTrigger></Style.Triggers></Style></Button.Style>
           </Button>
           <Button Grid.Column="2" Content="删除" Margin="8,0,0,0" Foreground="{StaticResource DangerRed}" Command="{Binding DataContext.DeleteProfileCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}"/>
         </Grid>
@@ -65,7 +65,7 @@
     </Grid>
     <Border Grid.Row="3" Background="#F0F5FF" CornerRadius="8" Padding="12" Margin="0,12,0,0">
       <StackPanel><TextBlock Foreground="#245BC5" TextWrapping="Wrap"><Run Text="当前选择："/><Run Text="{Binding SelectedProfileLabel, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
-        <TextBlock Text="蓝色边框表示当前选择。单独参与与配置组参与互相独立。" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+        <TextBlock Text="配置组决定是否参与监听，方案状态决定是否允许触发。" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border></Grid>
   </Grid>

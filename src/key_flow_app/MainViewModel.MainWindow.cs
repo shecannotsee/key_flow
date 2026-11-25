@@ -28,10 +28,10 @@ public sealed partial class MainViewModel
     public bool MainHasGroup => MainGroup is not null;
     public string MainScopeTitle => MainGroup?.Name ?? "全部配置";
     public string MainGroupAction => MainGroup?.Participates == true ? "取消组激活" : "激活此组";
-    public string MainProfileAction => SelectedProfile.IsInActivationPool ? "取消单独激活" : "单独激活";
-    public string MainState => IsRunning ? "运行中" : IsMonitoring ? "颜色监听中" : "已停止";
-    public string MainActivity => IsRunning ? $"正在执行：{_mainExecutingName}" : IsMonitoring ? "等待颜色条件满足" : "当前没有方案执行";
-    public string MainCounts => $"{Profiles.Count(IsParticipating)} 个已激活 · {_activationPool.ActiveCount} 个执行或排队";
+    public string MainProfileAction => SelectedProfile.Enabled ? "关闭方案" : "启用方案";
+    public string MainState => IsRunning ? "运行中" : IsListening ? "监听中" : "已停止";
+    public string MainActivity => IsRunning ? $"正在执行：{_mainExecutingName}" : IsListening ? $"监听 {Profiles.Count(IsParticipating)} 个已启用方案" : "当前没有方案监听或执行";
+    public string MainCounts => $"{Profiles.Count(IsParticipating)} 个可触发 · {_activationPool.ActiveCount} 个执行或排队";
     public bool MainHasSelection => Profiles.Contains(SelectedProfile) && MainRows.Any(row => ReferenceEquals(row.Profile, SelectedProfile));
     public string MainSelectionLabel => MainHasSelection ? $"所选：{SelectedProfile.Name}" : "未选择配置";
     public MainProfileRow? MainSelectedRow
@@ -90,7 +90,7 @@ public sealed class MainProfileRow(KeyProfile profile, bool participates, string
     public string Trigger => string.IsNullOrWhiteSpace(Profile.AlternateStartHotkey)
         ? Profile.StartHotkey : $"{Profile.StartHotkey} / {Profile.AlternateStartHotkey}";
     public string TriggerDetails => $"{Trigger} · {(Profile.ColorTriggerEnabled ? "颜色条件" : "按键触发")}";
-    public string Participation => !Participates ? "未激活" : Profile.IsInActivationPool ? "单独激活" : "组内激活";
+    public string Participation => !Profile.Enabled ? "已关闭" : Participates ? "已启用 · 组已激活" : "已启用 · 等待组激活";
     public bool HasActivity => Activity is "执行 / 排队" or "颜色监听";
     public static IEnumerable<KeyProfile> Filter(IEnumerable<KeyProfile> profiles, IEnumerable<ProfileGroup> groups,
         ProfileGroup? selectedGroup, string search)
