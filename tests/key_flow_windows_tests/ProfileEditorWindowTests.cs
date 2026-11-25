@@ -47,6 +47,7 @@ public sealed class ProfileEditorWindowTests
                 Assert.All(stateButtons, button => Assert.Equal(BindingMode.OneWay,
                     BindingOperations.GetBinding(button, ToggleButton.IsCheckedProperty)?.Mode));
                 VerifySelectorGroupingAndSelection();
+                VerifyPreparationLayout();
                 foreach (var step in new[] { 0, 1, 2 })
                 {
                     window.DataContext = new EditorState { EditorStep = step };
@@ -68,6 +69,53 @@ public sealed class ProfileEditorWindowTests
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "Editor WPF smoke test timed out");
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
+    private static void VerifyPreparationLayout()
+    {
+        // Load the actual production XAML without MainWindow's hardware/configuration side effects.
+        var repo = new DirectoryInfo(AppContext.BaseDirectory);
+        while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "key_flow.sln"))) repo = repo.Parent;
+        Assert.NotNull(repo);
+        var markup = System.Xml.Linq.XDocument.Load(Path.Combine(repo.FullName, "src/key_flow_app/MainWindow.xaml"));
+        markup.Root!.Attribute(System.Xml.Linq.XName.Get("Class", "http://schemas.microsoft.com/winfx/2006/xaml"))!.Remove();
+        var xaml = markup.ToString().Replace("clr-namespace:key_flow_app.Controls", "clr-namespace:key_flow_app.Controls;assembly=key_flow");
+        var host = (Window)System.Windows.Markup.XamlReader.Parse(xaml, new System.Windows.Markup.ParserContext
+        {
+            BaseUri = new Uri("pack://application:,,,/key_flow;component/MainWindow.xaml")
+        });
+        host.WindowStartupLocation = WindowStartupLocation.Manual;
+        host.Left = -10000; host.Top = -10000; host.ShowInTaskbar = false;
+        try
+        {
+            host.DataContext = new PreparationState();
+            host.Show();
+            var root = (FrameworkElement)host.Content;
+            var card = FindLogicalChildren<PreparationCard>(host).Single();
+            foreach (var (label, status) in new[]
+            {
+                ("准备使用", "点击“准备使用”后解锁功能；准备期间可能出现菜单弹出或鼠标短暂移动"),
+                ("正在准备…", "正在准备，请稍候。"),
+                ("准备失败，请重启", "暂时无法使用，请关闭程序后重新打开。问题详情已记录")
+            })
+            {
+                host.DataContext = new PreparationState { InitializationText = label, LastMessage = status };
+                host.UpdateLayout();
+                Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ApplicationIdle, new Action(() => { }));
+                Assert.Equal(ResizeMode.NoResize, host.ResizeMode);
+                Assert.Empty(FindLogicalChildren<ScrollViewer>(card));
+                foreach (var element in FindLogicalChildren<FrameworkElement>(card)
+                    .Where(element => element is TextBlock or Button))
+                {
+                    Assert.True(element.ActualHeight > 0);
+                    var bounds = element.TransformToAncestor(root).TransformBounds(new Rect(element.RenderSize));
+                    Assert.True(bounds.Top >= 0 && bounds.Left >= 0 && bounds.Bottom <= root.ActualHeight && bounds.Right <= root.ActualWidth,
+                        $"Initialization content clipped: {element.GetType().Name}, {bounds}, viewport {root.RenderSize}");
+                }
+                SaveVisual(host, $"preparation-{label}.png");
+            }
+        }
+        finally { host.Close(); }
     }
 
     private static void VerifySelectorGroupingAndSelection()
@@ -156,5 +204,13 @@ public sealed class ProfileEditorWindowTests
         public bool IsSequenceMode => false;
         public bool IsUnlimitedMode => true;
         public bool IsTimedMode => false;
+    }
+
+    private sealed class PreparationState
+    {
+        public bool IsInitialized => false;
+        public bool IsPinned { get; set; }
+        public string InitializationText { get; init; } = "准备使用";
+        public string LastMessage { get; init; } = "点击“准备使用”后解锁功能；准备期间可能出现菜单弹出或鼠标短暂移动";
     }
 }
