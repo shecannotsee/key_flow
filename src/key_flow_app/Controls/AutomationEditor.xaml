@@ -11,15 +11,15 @@
         <TextBlock Text="划定区域：按住左键拖动后松开（单击选一个点）。采色：窗口暂时收起，等待状态出现时点击左键，立即读取已选区域；该点击不会传给目标程序。Esc 取消，60 秒超时。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}"/>
         <WrapPanel Margin="0,12,0,6"><Button Content="取色（3 秒后）" Command="{Binding PickColorCommand}"/><Button Content="检测一次" Command="{Binding TestColorCommand}"/></WrapPanel>
         <WrapPanel>
-          <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="70" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.X, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
-          <TextBlock Text="Y" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="70" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Y, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
-          <TextBlock Text="目标色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="96" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Target, UpdateSourceTrigger=PropertyChanged}"/>
-          <TextBlock Text="容差" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="60" Margin="0,0,0,8" Text="{Binding SelectedProfile.ColorCondition.Tolerance, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="X" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="88" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.X, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="Y" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="88" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Y, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="目标色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="120" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Target, UpdateSourceTrigger=PropertyChanged}"/>
+          <TextBlock Text="容差" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="88" Margin="0,0,0,8" Text="{Binding SelectedProfile.ColorCondition.Tolerance, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
         </WrapPanel>
         <WrapPanel>
-          <TextBlock Text="宽" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="65" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Width, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
-          <TextBlock Text="高" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="65" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Height, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
-          <TextBlock Text="未激活色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="96" Margin="0,0,0,8" Text="{Binding SelectedProfile.ColorCondition.InactiveTarget, UpdateSourceTrigger=PropertyChanged}"/>
+          <TextBlock Text="宽" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="88" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Width, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="高" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="88" Margin="0,0,12,8" Text="{Binding SelectedProfile.ColorCondition.Height, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBlock Text="未激活色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="120" Margin="0,0,0,8" Text="{Binding SelectedProfile.ColorCondition.InactiveTarget, UpdateSourceTrigger=PropertyChanged}"/>
         </WrapPanel>
         <CheckBox Content="使用明确的未激活色（其他颜色视为未知）" IsChecked="{Binding SelectedProfile.ColorCondition.UseInactiveTarget}" Margin="0,6"/>
         <TextBlock Text="区域使用九点 RGB 均值，请选择颜色均匀的小色块。两次采样均读取同一区域，改变区域后请重采两色。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}"/>
@@ -28,7 +28,7 @@
             <CheckBox Content="色块激活后自动运行当前按键流程" IsChecked="{Binding SelectedProfile.ColorTriggerEnabled}"/>
             <WrapPanel Margin="0,10,0,6">
               <TextBlock Text="激活 / 恢复确认时间" VerticalAlignment="Center" Margin="0,0,8,0"/>
-              <TextBox Width="75" Text="{Binding SelectedProfile.TriggerDebounceMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+              <TextBox Width="96" Text="{Binding SelectedProfile.TriggerDebounceMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
               <TextBlock Text="ms" VerticalAlignment="Center" Margin="8,0,0,0"/>
             </WrapPanel>
             <TextBlock Text="开启后，开始按钮和开始热键用于开启监听。需设置大于 0 的持续时间。先恢复未激活，再次激活才触发；流程执行完毕后继续监听。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}"/>
@@ -45,7 +45,7 @@
         <TextBlock Text="运行方式" FontWeight="SemiBold" Margin="0,0,0,12"/>
         <WrapPanel>
           <TextBlock Text="持续时间（秒）" VerticalAlignment="Center" Margin="0,0,10,8"/>
-          <TextBox Width="80" Margin="0,0,12,8" Text="{Binding SelectedProfile.DurationSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
+          <TextBox Width="96" Margin="0,0,12,8" Text="{Binding SelectedProfile.DurationSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
           <TextBlock Text="0 表示持续运行；例如填 6，六秒后自动停止" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,0,8" Foreground="{StaticResource TextSecondary}"/>
         </WrapPanel>
         <WrapPanel Margin="0,4,0,0">

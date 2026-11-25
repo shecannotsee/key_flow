@@ -6,8 +6,8 @@
   <RadioButton Content="持续重复，直到停止" IsChecked="{Binding IsUnlimitedMode, Mode=OneWay}" Command="{Binding SetRepeatModeCommand}" CommandParameter="unlimited" Margin="0,0,0,6"/>
   <RadioButton Content="限时重复，到时间自动停止" IsChecked="{Binding IsTimedMode, Mode=OneWay}" Command="{Binding SetRepeatModeCommand}" CommandParameter="timed"/>
   <WrapPanel Margin="26,10,0,12"><WrapPanel.Style><Style TargetType="WrapPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding IsTimedMode}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></WrapPanel.Style>
-    <TextBox Width="76" Text="{Binding SelectedProfile.DurationSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/><TextBlock TextWrapping="Wrap" Text="秒" VerticalAlignment="Center" Margin="8,0,16,0"/>
-    <TextBox Width="76" Text="{Binding SelectedProfile.DurationMilliseconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/><TextBlock TextWrapping="Wrap" Text="毫秒（0–999）" VerticalAlignment="Center" Margin="8,0,0,0"/>
+    <TextBox Width="96" Text="{Binding SelectedProfile.DurationSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/><TextBlock TextWrapping="Wrap" Text="秒" VerticalAlignment="Center" Margin="8,0,16,0"/>
+    <TextBox Width="96" Text="{Binding SelectedProfile.DurationMilliseconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/><TextBlock TextWrapping="Wrap" Text="毫秒（0–999）" VerticalAlignment="Center" Margin="8,0,0,0"/>
   </WrapPanel>
   <TextBlock TextWrapping="Wrap" Text="运行期间再次触发" FontSize="14" FontWeight="SemiBold" Margin="0,20,0,8"/>
   <TextBlock TextWrapping="Wrap" Text="单键开关模式下，再按一次就是停止；以下重复触发策略不生效。" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8">

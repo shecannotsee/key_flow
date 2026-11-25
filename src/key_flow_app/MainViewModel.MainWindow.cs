@@ -27,7 +27,7 @@ public sealed partial class MainViewModel
     public bool MainAllSelected => MainGroup is null;
     public bool MainHasGroup => MainGroup is not null;
     public string MainScopeTitle => MainGroup?.Name ?? "全部配置";
-    public string MainGroupAction => MainGroup?.Participates == true ? "取消组激活" : "激活此组";
+    public string MainGroupAction => MainGroup?.Participates == true ? "关闭" : "开启";
     public string MainProfileAction => SelectedProfile.Enabled ? "关闭方案" : "启用方案";
     public string MainState => IsRunning ? "运行中" : IsListening ? "监听中" : "已停止";
     public string MainActivity => IsRunning ? $"正在执行：{_mainExecutingName}" : IsListening ? $"监听 {Profiles.Count(IsParticipating)} 个已启用方案" : "当前没有方案监听或执行";
@@ -91,6 +91,7 @@ public sealed class MainProfileRow(KeyProfile profile, bool participates, string
         ? Profile.StartHotkey : $"{Profile.StartHotkey} / {Profile.AlternateStartHotkey}";
     public string TriggerDetails => $"{Trigger} · {(Profile.ColorTriggerEnabled ? "颜色条件" : "按键触发")}";
     public string Participation => !Profile.Enabled ? "已关闭" : Participates ? "已启用 · 组已激活" : "已启用 · 等待组激活";
+    public string EnabledAction => Profile.Enabled ? "关闭" : "开启";
     public bool HasActivity => Activity is "执行 / 排队" or "颜色监听";
     public static IEnumerable<KeyProfile> Filter(IEnumerable<KeyProfile> profiles, IEnumerable<ProfileGroup> groups,
         ProfileGroup? selectedGroup, string search)

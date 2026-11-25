@@ -37,7 +37,19 @@
         </Grid>
         <StackPanel Grid.Row="4" Visibility="{Binding MainHasGroup, Converter={StaticResource VisibleWhenTrue}}" Margin="0,8,0,0">
           <TextBlock Text="所选配置组" Foreground="{StaticResource MainMuted}" FontSize="11" Margin="4,0,0,6"/>
-          <Button Content="{Binding MainGroupAction}" Command="{Binding ToggleGroupCommand}" CommandParameter="{Binding MainGroup}" BorderThickness="1"/>
+          <Button x:Name="GroupToggleButton" Content="{Binding MainGroupAction}" Command="{Binding ToggleGroupCommand}" CommandParameter="{Binding MainGroup}" BorderThickness="1" ToolTip="开启或关闭当前配置组">
+            <Button.Style>
+              <Style TargetType="Button" BasedOn="{StaticResource MainPrimary}">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding MainGroup.Participates}" Value="True">
+                    <Setter Property="Background" Value="#FFF0F0"/>
+                    <Setter Property="BorderBrush" Value="#F2D2D5"/>
+                    <Setter Property="Foreground" Value="#B44C58"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Button.Style>
+          </Button>
           <UniformGrid Columns="2" Margin="0,4,0,0"><Button Content="重命名" Command="{Binding EditGroupCommand}" CommandParameter="{Binding MainGroup}"/><Button x:Name="DeleteGroupButton" Content="删除组" Command="{Binding DeleteGroupCommand}" CommandParameter="{Binding MainGroup}" Foreground="#B32932" ToolTip="删除配置组；组内方案会迁移至默认配置组"/></UniformGrid>
           <Button Content="移入此组" Command="{Binding MoveProfileToGroupCommand}" CommandParameter="{Binding MainGroup}" Margin="0,4,0,0" ToolTip="将当前选中的方案移动到此配置组"/>
         </StackPanel>
@@ -48,11 +60,13 @@
           <Grid><TextBox x:Name="SearchBox" Text="{Binding MainSearch, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="搜索配置" ToolTip="搜索配置名或所属配置组"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="搜索配置或配置组" Margin="10,0" Foreground="#8B929B" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value=""><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Grid>
           <Button Grid.Column="1" Content="导入" Command="{Binding ImportCommand}" Margin="8,0,0,0"/>
         </Grid>
-        <Grid Grid.Row="2" Margin="12,0,29,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="110"/><ColumnDefinition Width="110"/><ColumnDefinition Width="86"/></Grid.ColumnDefinitions><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="方案名称" Foreground="{StaticResource MainMuted}" FontSize="11"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="1" Text="触发键" Foreground="{StaticResource MainMuted}" FontSize="11"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="2" Text="启用状态" Foreground="{StaticResource MainMuted}" FontSize="11"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="3" Text="执行状态" Foreground="{StaticResource MainMuted}" FontSize="11"/></Grid>
+        <Grid Grid.Row="2" Margin="12,0,12,6"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="110"/><ColumnDefinition Width="82"/><ColumnDefinition Width="86"/></Grid.ColumnDefinitions><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="方案名称" Foreground="{StaticResource MainMuted}" FontSize="11"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="1" Text="触发键" Foreground="{StaticResource MainMuted}" FontSize="11"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="2" Text="启用状态" Foreground="{StaticResource MainMuted}" FontSize="11"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="3" Text="执行状态" Foreground="{StaticResource MainMuted}" FontSize="11"/></Grid>
         <Grid Grid.Row="3"><ListBox x:Name="ProfilesList" MinHeight="140" ItemsSource="{Binding MainRows}" SelectedItem="{Binding MainSelectedRow}" SelectionChanged="ProfileSelectionChanged" PreviewKeyDown="ProfilePreviewKeyDown" ItemContainerStyle="{StaticResource MainRow}">
           <ListBox.ItemTemplate><DataTemplate><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="110"/><ColumnDefinition Width="82"/><ColumnDefinition Width="86"/></Grid.ColumnDefinitions>
             <TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="{Binding Name}" ToolTip="{Binding Name}" Margin="0,0,8,0"/><TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="1" Text="{Binding Trigger}" ToolTip="{Binding TriggerDetails}" Foreground="{StaticResource MainMuted}" Margin="0,0,8,0"/>
-            <TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="2" Text="{Binding Participation}" FontSize="12"><TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Foreground" Value="#8B929B"/><Style.Triggers><DataTrigger Binding="{Binding Profile.Enabled}" Value="True"><Setter Property="Foreground" Value="#245FA9"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+            <Button Grid.Column="2" Content="{Binding EnabledAction}" Command="{Binding DataContext.ToggleProfileEnabledCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding Profile}" Padding="7,2" MinHeight="26" Margin="0,0,4,0" ToolTip="开启或关闭此方案">
+              <Button.Style><Style TargetType="Button" BasedOn="{StaticResource MainPrimary}"><Setter Property="FontSize" Value="11"/><Style.Triggers><DataTrigger Binding="{Binding Profile.Enabled}" Value="True"><Setter Property="Background" Value="#FFF0F0"/><Setter Property="BorderBrush" Value="#F2D2D5"/><Setter Property="Foreground" Value="#B44C58"/></DataTrigger></Style.Triggers></Style></Button.Style>
+            </Button>
             <TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Grid.Column="3" Text="{Binding Activity}" Style="{StaticResource MainActivityText}" FontSize="12"/>
           </Grid></DataTemplate></ListBox.ItemTemplate>
         </ListBox>
@@ -60,7 +74,7 @@
         </Grid>
         <Border Grid.Row="4" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="0,10"><StackPanel>
           <TextBlock TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="{Binding MainSelectionLabel}" Foreground="{StaticResource MainMuted}" FontSize="11" Margin="0,0,0,6" ToolTip="{Binding SelectedProfileLabel}"/>
-          <WrapPanel IsEnabled="{Binding MainHasSelection}"><Button Content="编辑配置" Command="{Binding OpenEditorCommand}" BorderThickness="1"/><Button Content="{Binding MainProfileAction}" Command="{Binding ToggleProfileEnabledCommand}" CommandParameter="{Binding SelectedProfile}" Margin="4,0,0,0"/><Button Content="复制" Command="{Binding DuplicateProfileCommand}"/><Button Content="导出" Command="{Binding ExportCommand}"/><Button Content="删除" Command="{Binding DeleteProfileCommand}" CommandParameter="{Binding SelectedProfile}" Foreground="#B32932"/></WrapPanel>
+          <WrapPanel IsEnabled="{Binding MainHasSelection}"><Button Content="编辑配置" Command="{Binding OpenEditorCommand}" BorderThickness="1"/><Button Content="复制" Command="{Binding DuplicateProfileCommand}"/><Button Content="导出" Command="{Binding ExportCommand}"/><Button Content="删除" Command="{Binding DeleteProfileCommand}" CommandParameter="{Binding SelectedProfile}" Foreground="#B32932"/></WrapPanel>
         </StackPanel></Border>
       </Grid></Border>
     </Grid>
