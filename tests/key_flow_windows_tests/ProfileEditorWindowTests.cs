@@ -48,6 +48,7 @@ public sealed class ProfileEditorWindowTests
                     BindingOperations.GetBinding(button, ToggleButton.IsCheckedProperty)?.Mode));
                 VerifySelectorGroupingAndSelection();
                 VerifyPreparationLayout();
+                MainWorkspaceChecks.Run();
                 foreach (var step in new[] { 0, 1, 2 })
                 {
                     window.DataContext = new EditorState { EditorStep = step };
@@ -67,7 +68,7 @@ public sealed class ProfileEditorWindowTests
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "Editor WPF smoke test timed out");
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)), "Editor WPF smoke test timed out");
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 

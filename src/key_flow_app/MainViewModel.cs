@@ -462,6 +462,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             var remaining = _activeProfileActivations.GetValueOrDefault(source) - 1;
             if (remaining <= 0) _activeProfileActivations.Remove(source);
             else _activeProfileActivations[source] = remaining;
+            if (!_disposed) RefreshMainPresentation();
         }
     }
 
@@ -476,6 +477,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         await dispatcher.InvokeAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            _mainExecutingName = profile.Name;
             _runtime.Arm();
             await _runtime.TriggerAsync(profile, cancellationToken, window);
             if (cancellationToken.IsCancellationRequested && !window.IsExpired)
@@ -587,6 +589,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnPropertyChanged([CallerMemberName] string? name = null)
     {
         PropertyChanged?.Invoke(this, new(name));
+        if (name is nameof(Profiles) or nameof(Groups) or nameof(ActivationPoolStatus) or nameof(SelectedProfile)
+            or nameof(SelectedProfileLabel) or nameof(CanEdit) or nameof(IsRunning) or nameof(IsMonitoring)
+            or nameof(LastMessage) or nameof(IsInitialized))
+            RefreshMainPresentation();
         if (name is nameof(Profiles) or nameof(ActivationPoolStatus))
         {
             PropertyChanged?.Invoke(this, new(nameof(ParticipatingProfiles)));
