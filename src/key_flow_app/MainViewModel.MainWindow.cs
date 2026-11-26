@@ -64,8 +64,7 @@ public sealed partial class MainViewModel
         foreach (var obsolete in _mainRowCache.Keys.Where(profile => !Profiles.Contains(profile)).ToArray()) _mainRowCache.Remove(obsolete);
         foreach (var profile in Profiles)
         {
-            var activity = _activeProfileActivations.GetValueOrDefault(profile) > 0 ? "执行 / 排队" :
-                _monitorCancellations.ContainsKey(profile) ? "颜色监听" : "空闲";
+            var activity = _activeProfileActivations.GetValueOrDefault(profile) > 0 ? "执行 / 排队" : "空闲";
             if (!_mainRowCache.TryGetValue(profile, out var row)) _mainRowCache[profile] = row = new(profile, IsParticipating(profile), activity);
             row.Refresh(IsParticipating(profile), activity);
         }
@@ -103,10 +102,10 @@ public sealed class MainProfileRow(KeyProfile profile, bool participates, string
     public string Name => Profile.Name;
     public string Trigger => string.IsNullOrWhiteSpace(Profile.AlternateStartHotkey)
         ? Profile.StartHotkey : $"{Profile.StartHotkey} / {Profile.AlternateStartHotkey}";
-    public string TriggerDetails => $"{Trigger} · {(Profile.ColorTriggerEnabled ? "颜色条件" : "按键触发")}";
+    public string TriggerDetails => $"{Trigger} · 按键触发";
     public string Participation => !Profile.Enabled ? "已关闭" : Participates ? "已启用 · 组已激活" : "已启用 · 等待组激活";
     public string EnabledAction => Profile.Enabled ? "关闭" : "开启";
-    public bool HasActivity => Activity is "执行 / 排队" or "颜色监听";
+    public bool HasActivity => Activity == "执行 / 排队";
     public static IEnumerable<KeyProfile> Filter(IEnumerable<KeyProfile> profiles, IEnumerable<ProfileGroup> groups,
         ProfileGroup? selectedGroup, string search)
     {

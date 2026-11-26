@@ -52,7 +52,6 @@ public sealed class ProfileEditorWindowTests
                 foreach (var step in new[] { 0, 1, 2 })
                 {
                     var editorState = new EditorState { EditorStep = step };
-                    if (step == 0) editorState.SelectedProfile.ColorTriggerEnabled = true;
                     if (step == 2) { editorState.SelectedProfile.DurationSeconds = 6; editorState.SelectedProfile.DurationMilliseconds = 300; }
                     window.DataContext = editorState;
                     foreach (var size in new[] { (Width: 720d, Height: 640d), (Width: 560d, Height: 520d) })
@@ -92,9 +91,8 @@ public sealed class ProfileEditorWindowTests
             var page = FindLogicalChildren<TriggerEditorPage>(window).Single();
             Assert.NotNull(FindLogicalChildren<TextBox>(page).FirstOrDefault(box =>
                 BindingOperations.GetBinding(box, TextBox.TextProperty)?.Path.Path == "SelectedProfile.Name"));
-            Assert.Contains(FindLogicalChildren<CheckBox>(page), box => box.Content?.ToString() == "启用颜色变化触发");
             Assert.Contains(FindLogicalChildren<Button>(page), button =>
-                BindingOperations.GetBinding(button, Button.CommandProperty)?.Path.Path == "CaptureActiveColorCommand");
+                BindingOperations.GetBinding(button, Button.CommandProperty)?.Path.Path == "CaptureStartCommand");
         }
         else if (step == 1)
         {
@@ -105,6 +103,8 @@ public sealed class ProfileEditorWindowTests
             foreach (var command in new[] { "AddStepCommand", "RemoveStepCommand", "MoveStepUpCommand", "MoveStepDownCommand" })
                 Assert.Contains(FindLogicalChildren<Button>(page), button => BindingOperations.GetBinding(button, Button.CommandProperty)?.Path.Path == command);
             Assert.Contains(FindVisualChildren<TextBox>(page), box => BindingOperations.GetBinding(box, TextBox.TextProperty)?.Path.Path == "WaitAfterMs");
+            Assert.Contains(FindLogicalChildren<Button>(page), button =>
+                BindingOperations.GetBinding(button, Button.CommandProperty)?.Path.Path == "TestWorkflowCommand");
         }
         else
         {
@@ -182,9 +182,6 @@ public sealed class ProfileEditorWindowTests
             var searchBox = FindLogicalChildren<TextBox>(selector).Single();
             Assert.Equal("按方案名或分组搜索", searchBox.ToolTip);
             Assert.False(second.IsInActivationPool);
-            var colorSwitch = FindLogicalChildren<CheckBox>(new key_flow_app.Controls.TriggerEditorPage())
-                .Single(box => box.Content?.ToString() == "启用颜色变化触发");
-            Assert.Equal(Visibility.Visible, colorSwitch.Visibility);
             var group = new ProfileGroup { Name = "配套配置", MemberIds = [first.Id, second.Id] };
             var editor = new GroupEditorWindow(group, state.Profiles);
             try { editor.Show(); editor.UpdateLayout(); } finally { editor.Close(); }
@@ -253,7 +250,7 @@ public sealed class ProfileEditorWindowTests
         public bool ResetsOnRetrigger => true;
         public bool IgnoresRetrigger => false;
         public bool UseToggleHotkey { get; set; }
-        public KeyProfile SelectedProfile { get; } = new() { Name = "我的方案 1", SequenceMode = true, Steps = [new("E", 80), new("F", 100)], ColorTriggerEnabled = false };
+        public KeyProfile SelectedProfile { get; } = new() { Name = "我的方案 1", SequenceMode = true, Steps = [new("E", 80), new("F", 100)] };
 
         public bool IsSingleKeyMode => !SelectedProfile.SequenceMode;
         public bool IsSequenceMode => SelectedProfile.SequenceMode;

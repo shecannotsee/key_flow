@@ -11,7 +11,7 @@ public sealed class SystemHotkeys : IDisposable
     private readonly HwndSource source;
     private readonly Dictionary<int, (uint Key, uint Modifiers)> bindings = [];
     private readonly Dictionary<int, bool> held = [];
-    private readonly Dictionary<int, long> lastSignal = [];
+    private readonly HashSet<int> signaledDown = [];
     private readonly DispatcherTimer poll;
     private readonly Func<uint, bool> keyState;
     private readonly RawKeyboardInput raw;
@@ -51,11 +51,12 @@ public sealed class SystemHotkeys : IDisposable
         if (key == 0) return false;
         bindings[id] = (key, modifiers);
         held[id] = IsDown(key, modifiers);
+        if (held[id]) signaledDown.Add(id);
         return true;
     }
     public void Clear()
     {
-        bindings.Clear(); held.Clear(); lastSignal.Clear();
+        bindings.Clear(); held.Clear(); signaledDown.Clear();
         rawHeld.Clear(); hookHeld.Clear();
     }
     private void Poll()
@@ -73,6 +74,7 @@ public sealed class SystemHotkeys : IDisposable
             var wasDown = held.GetValueOrDefault(id);
             held[id] = down;
             if (down && !wasDown) Signal(id, "GetAsyncKeyState");
+            else if (!down) signaledDown.Remove(id);
         }
     }
     private void OnHookKey(uint key, bool down)
@@ -80,7 +82,12 @@ public sealed class SystemHotkeys : IDisposable
         RefreshForeground();
         hookEvents++;
         var changed = down ? hookHeld.Add(key) : hookHeld.Remove(key);
-        if (!down || !changed) return;
+        if (!down)
+        {
+            ReleaseSignalsForKey(key);
+            return;
+        }
+        if (!changed) return;
         bool HookDown(uint k) => k switch
         {
             0x10 => hookHeld.Contains(0x10) || hookHeld.Contains(0xA0) || hookHeld.Contains(0xA1),
@@ -101,7 +108,12 @@ public sealed class SystemHotkeys : IDisposable
         RefreshForeground();
         rawEvents++;
         var changed = down ? rawHeld.Add(key) : rawHeld.Remove(key);
-        if (!down || !changed) return;
+        if (!down)
+        {
+            ReleaseSignalsForKey(key);
+            return;
+        }
+        if (!changed) return;
         foreach (var (id, binding) in bindings.ToArray())
         {
             if (binding.Key != key) continue;
@@ -144,11 +156,17 @@ public sealed class SystemHotkeys : IDisposable
         return active == modifiers && keyState(key);
     }
     private static bool Down(uint key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
+    private void ReleaseSignalsForKey(uint key)
+    {
+        foreach (var (id, binding) in bindings)
+            if (binding.Key == key) signaledDown.Remove(id);
+    }
     private void Signal(int id, string origin)
     {
-        var now = Environment.TickCount64;
-        if (lastSignal.TryGetValue(id, out var previous) && now - previous < 150) return;
-        lastSignal[id] = now;
+        // The three input sources report the same physical press at slightly
+        // different times. Deduplicate while the key is held, not by a time
+        // window, so a quick release/re-press is still a valid second toggle.
+        if (!signaledDown.Add(id)) return;
         LastSource = origin;
         Pressed?.Invoke(id);
     }

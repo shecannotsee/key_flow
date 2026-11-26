@@ -7,36 +7,5 @@
   <TextBlock Text="快捷键触发" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
   <controls:HotkeyEditor/>
   <TextBlock Text="{Binding CaptureText}" Foreground="{StaticResource AccentBlue}" Margin="0,8,0,0"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding CaptureText}" Value="按下主键；组合键请先按住 Ctrl、Alt 或 Shift"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-  <TextBlock Text="屏幕取色触发" FontSize="14" FontWeight="SemiBold" Margin="0,20,0,8"/>
-  <CheckBox Content="启用颜色变化触发" IsChecked="{Binding SelectedProfile.ColorTriggerEnabled}"/>
-  <TextBlock Text="开启后，开始键进入监听；颜色从未激活变为激活时执行。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,8,0,0"/>
-  <Border BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
-    <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding SelectedProfile.ColorTriggerEnabled}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></Border.Style>
-    <StackPanel>
-
-
-      <WrapPanel Margin="0,0,0,6">
-        <Button Margin="0,0,8,4" Content="框选区域" Command="{Binding SelectColorRegionCommand}"/>
-        <Button Margin="0,0,8,4" Content="采集激活色" Command="{Binding CaptureActiveColorCommand}"/>
-        <Button Margin="0,0,8,4" Content="采集未激活色" Command="{Binding CaptureInactiveColorCommand}"/>
-      </WrapPanel>
-      <TextBlock Text="采样时窗口暂时收起，点击目标状态取色；Esc 取消。" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource TextSecondary}"/>
-      <WrapPanel Margin="0,10,0,6">
-        <Button Margin="0,0,8,4" Content="检测当前区域" Command="{Binding TestColorCommand}"/>
-        <TextBlock Text="确认时间" VerticalAlignment="Center" Margin="12,0,6,0"/>
-        <TextBox Width="96" Text="{Binding SelectedProfile.TriggerDebounceMs, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
-        <TextBlock Text="ms" VerticalAlignment="Center" Margin="6,0,0,0"/>
-      </WrapPanel>
-      <WrapPanel>
-        <TextBlock Text="激活色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="120" Margin="0,0,10,8" Text="{Binding SelectedProfile.ColorCondition.Target, UpdateSourceTrigger=PropertyChanged}"/>
-        <TextBlock Text="未激活色" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="120" Margin="0,0,10,8" Text="{Binding SelectedProfile.ColorCondition.InactiveTarget, UpdateSourceTrigger=PropertyChanged}"/>
-        <TextBlock Text="容差" VerticalAlignment="Center" Margin="0,0,6,8"/><TextBox Width="88" Margin="0,0,0,8" Text="{Binding SelectedProfile.ColorCondition.Tolerance, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True, NotifyOnValidationError=True}"/>
-      </WrapPanel>
-      <TextBlock Text="{Binding ColorStatus}" TextWrapping="Wrap" Foreground="{StaticResource AccentBlue}" Margin="0,4,0,0"/>
-    </StackPanel>
-  </Border>
-  <Expander Header="高级选项" Margin="0,12,0,0">
-    <CheckBox Content="每次按键前检查颜色，仅匹配时输出" IsChecked="{Binding SelectedProfile.ColorCondition.Enabled}" Margin="0,10"/>
-  </Expander>
 </StackPanel>
 </UserControl>

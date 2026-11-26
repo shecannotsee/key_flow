@@ -20,10 +20,8 @@ public static class ProfileOperations
         IsInActivationPool = profile.IsInActivationPool,
         StartHotkey = profile.StartHotkey, StopHotkey = profile.StopHotkey, ToggleHotkey = profile.ToggleHotkey,
         RetriggerMode = profile.RetriggerMode,
-        ColorTriggerEnabled = profile.ColorTriggerEnabled, TriggerDebounceMs = profile.TriggerDebounceMs,
         DurationSeconds = profile.DurationSeconds, DurationMilliseconds = profile.DurationMilliseconds,
         AlternateStartHotkey = profile.AlternateStartHotkey,
-        ColorCondition = profile.ColorCondition.Copy(),
         Steps = profile.Steps.Select(s => new KeyStep(s.Key, s.WaitAfterMs) { HoldMs = s.HoldMs }).ToList(),
         SequenceMode = profile.SequenceMode
     };

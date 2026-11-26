@@ -26,7 +26,7 @@ public sealed class HotkeyFallbackTests
                 raw.Invoke(hotkeys, new object[] { 0x87u, true });
                 Assert.Equal(1, count);
                 Assert.Equal("KeyboardHook", hotkeys.LastSource);
-                Thread.Sleep(180); // Beyond cross-source debounce: held repeats still must not toggle.
+                Thread.Sleep(180); // Held repeats still must not toggle, regardless of elapsed time.
                 hook.Invoke(hotkeys, new object[] { 0x87u, true });
                 raw.Invoke(hotkeys, new object[] { 0x87u, true });
                 Assert.Equal(1, count);
@@ -50,6 +50,40 @@ public sealed class HotkeyFallbackTests
         Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
         if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
+
+    [Fact]
+    public void RapidReleaseAndRepressIsNotDroppedByCrossSourceDeduplication()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                using var window = new HwndSource(new HwndSourceParameters("rapid-toggle-test"));
+                using var hotkeys = new SystemHotkeys(window.Handle, _ => false, () => 1);
+                Assert.True(hotkeys.Bind(11, 0x86));
+                var count = 0;
+                hotkeys.Pressed += _ => count++;
+                var hook = typeof(SystemHotkeys).GetMethod("OnHookKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                var raw = typeof(SystemHotkeys).GetMethod("OnRawKey", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+                hook.Invoke(hotkeys, new object[] { 0x86u, true });
+                raw.Invoke(hotkeys, new object[] { 0x86u, true });
+                hook.Invoke(hotkeys, new object[] { 0x86u, false });
+                raw.Invoke(hotkeys, new object[] { 0x86u, false });
+                raw.Invoke(hotkeys, new object[] { 0x86u, true });
+                hook.Invoke(hotkeys, new object[] { 0x86u, true });
+
+                Assert.Equal(2, count);
+            }
+            catch (Exception e) { failure = e; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+    }
+
     [Fact]
     public void ForegroundChangeClearsMissedModifierReleaseAndReportsCandidate()
     {

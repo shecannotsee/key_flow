@@ -30,10 +30,6 @@ public sealed class KeyProfile : INotifyPropertyChanged
     private string _stopHotkey = "F9";
     private bool _toggleHotkey;
     private RetriggerMode _retriggerMode;
-    private bool _colorTriggerEnabled;
-    private int _triggerDebounceMs = 100;
-    public bool ColorTriggerEnabled { get => _colorTriggerEnabled; set { _colorTriggerEnabled = value; OnPropertyChanged(); } }
-    public int TriggerDebounceMs { get => _triggerDebounceMs; set { _triggerDebounceMs = value; OnPropertyChanged(); } }
     private double _durationSeconds;
     private int _durationMilliseconds;
     private string _alternateStartHotkey = "";
@@ -42,7 +38,6 @@ public sealed class KeyProfile : INotifyPropertyChanged
     [JsonIgnore]
     public double TotalDurationSeconds => DurationSeconds + DurationMilliseconds / 1000d;
     public string AlternateStartHotkey { get => _alternateStartHotkey; set { _alternateStartHotkey = value; OnPropertyChanged(); } }
-    public ColorCondition ColorCondition { get; set; } = new();
     public bool ToggleHotkey { get => _toggleHotkey; set { _toggleHotkey = value; OnPropertyChanged(); } }
     public RetriggerMode RetriggerMode { get => _retriggerMode; set { _retriggerMode = value; OnPropertyChanged(); } }
     private List<KeyStep> _steps = [];
@@ -66,6 +61,16 @@ public sealed class AppConfig
     public int Version { get; set; } = JsonConfigStore.CurrentVersion;
     public List<KeyProfile> Profiles { get; set; } = [];
     public List<ProfileGroup> Groups { get; set; } = [];
+}
+
+public static class AutomationValidation
+{
+    public static void Validate(KeyProfile profile)
+    {
+        if (!double.IsFinite(profile.DurationSeconds) || profile.DurationSeconds is < 0 or > 86400 ||
+            profile.DurationMilliseconds is < 0 or > 999 || profile.TotalDurationSeconds > 86400)
+            throw new InvalidDataException("持续时间应为 0 至 86400 秒，毫秒部分应为 0 至 999；0 表示持续运行");
+    }
 }
 
 public interface IKeySender
@@ -144,23 +149,20 @@ public sealed class NullInputLogger : IInputLogger
     public void Error(string message, Exception exception) { }
 }
 
-public sealed class SequenceRunner(IKeySender sender, IScreenColorReader? screen = null)
+public sealed class SequenceRunner(IKeySender sender)
 {
     public async Task RunAsync(KeyProfile profile, CancellationToken cancellationToken, ActivationWindow? activationWindow = null)
     {
         Validate(profile);
         var steps = profile.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = step.HoldMs }).ToArray();
         AutomationValidation.Validate(profile);
-        var condition = profile.ColorCondition.Copy();
         using var ownedWindow = activationWindow is null ? new ActivationWindow(profile.TotalDurationSeconds) : null;
         var window = activationWindow ?? ownedWindow!;
         if (activationWindow is null) window.Start();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, window.Token);
         try
         {
-            await Task.Run(() => PulseLoop.Run(sender, steps, deadline.Token, canPress: condition.Enabled
-                ? () => ColorMatcher.Matches(ColorMatcher.Sample(screen ?? throw new InvalidOperationException("未提供屏幕读取服务"), condition), condition)
-                : null), deadline.Token).ConfigureAwait(false);
+            await Task.Run(() => PulseLoop.Run(sender, steps, deadline.Token), deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && window.IsExpired) { }
 

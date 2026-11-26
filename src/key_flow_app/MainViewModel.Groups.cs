@@ -79,7 +79,6 @@ public sealed partial class MainViewModel
             profile.Enabled = enabled;
             if (!enabled)
             {
-                _monitorCancellations.GetValueOrDefault(profile)?.Cancel();
                 _activationPool.Cancel(profile);
             }
         }
@@ -128,13 +127,7 @@ public sealed partial class MainViewModel
         {
             foreach (var profile in Profiles.Where(profile => group.MemberIds.Contains(profile.Id)).ToArray())
             {
-                if (!group.IsSelectedForRun)
-                {
-                    _monitorCancellations.GetValueOrDefault(profile)?.Cancel();
-                    _activationPool.Cancel(profile);
-                }
-                else if (profile.Enabled && profile.ColorTriggerEnabled)
-                    _ = StartMonitoringAsync(profile);
+                if (!group.IsSelectedForRun) _activationPool.Cancel(profile);
             }
         }
         RefreshGroups();

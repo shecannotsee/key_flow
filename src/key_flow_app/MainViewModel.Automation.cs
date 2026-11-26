@@ -1,82 +1,84 @@
+using System.IO;
 using System.Windows.Input;
 using key_flow_core;
 using key_flow_windows;
 
 namespace key_flow_app;
 
-// Presentation orchestration only; sampling and matching live in Windows/Core.
 public sealed partial class MainViewModel
 {
-    private readonly ScreenColorReader _screenReader = new();
-    private readonly CancellationTokenSource _automationCancellation = new();
-    private string _colorStatus = "尚未检测";
-    public string ColorStatus { get => _colorStatus; private set { _colorStatus = value; OnPropertyChanged(); } }
+    private CancellationTokenSource? _keyTestCancellation;
+    private int _keyTestDurationSeconds = 3;
+    public int KeyTestDurationSeconds
+    {
+        get => _keyTestDurationSeconds;
+        set
+        {
+            if (value is < 1 or > 30) throw new ArgumentOutOfRangeException(nameof(value), "测试时长应为 1 到 30 秒");
+            if (value == _keyTestDurationSeconds) return;
+            _keyTestDurationSeconds = value;
+            OnPropertyChanged();
+        }
+    }
+    public bool IsKeyTestRunning => _keyTestCancellation is not null;
+    public bool CanTestWorkflow => IsInitialized && !_disposed && !_runtime.IsBusy && !_activationPool.IsBusy && !_profileBusy && _validationErrors == 0;
+    public ICommand TestWorkflowCommand { get; private set; } = null!;
+    public ICommand StopKeyTestCommand { get; private set; } = null!;
     public ICommand CaptureAlternateStartCommand { get; private set; } = null!;
     public ICommand ClearAlternateStartCommand { get; private set; } = null!;
-    public ICommand PickColorCommand { get; private set; } = null!;
-    public ICommand TestColorCommand { get; private set; } = null!;
 
     private void SetupAutomationCommands()
     {
-        SetupScreenCaptureCommands();
+        TestWorkflowCommand = new RelayCommand(async _ => await TestSelectedWorkflowAsync(), _ => CanTestWorkflow);
+        StopKeyTestCommand = new RelayCommand(_ => StopKeyTest(), _ => IsKeyTestRunning);
         CaptureAlternateStartCommand = new RelayCommand(_ => BeginCapture(CaptureMode.AlternateStart), _ => CanEdit);
         ClearAlternateStartCommand = new RelayCommand(_ => { SelectedProfile.AlternateStartHotkey = ""; ConfigureHotkeys(); }, _ => CanEdit);
-        PickColorCommand = new RelayCommand(async _ => await PickColorAsync(), _ => CanEdit && _captureMode == CaptureMode.None);
-        TestColorCommand = new RelayCommand(_ => TestColor(), _ => CanEdit && _validationErrors == 0);
     }
 
-    private async Task PickColorAsync()
+    private async Task TestSelectedWorkflowAsync()
     {
-        var profile = SelectedProfile;
-        CancelCapture();
-        _profileBusy = true;
-        _systemHotkeys?.Clear();
-        OnPropertyChanged(nameof(CanEdit));
-        CommandManager.InvalidateRequerySuggested();
+        if (!CanTestWorkflow) return;
+        var source = SelectedProfile;
         try
         {
-            for (var seconds = 3; seconds > 0; seconds--)
-            {
-                ColorStatus = $"请把鼠标移到目标位置，{seconds} 秒后取色";
-                LastMessage = ColorStatus;
-                await Task.Delay(1000, _automationCancellation.Token);
-            }
-            var point = _screenReader.CursorPosition();
-            var color = _screenReader.Read(point.X, point.Y);
-            profile.ColorCondition.X = point.X;
-            profile.ColorCondition.Y = point.Y;
-            profile.ColorCondition.Width = profile.ColorCondition.Height = 1;
-            profile.ColorCondition.UseInactiveTarget = false;
-            profile.ColorCondition.Target = color.ToString();
-            ColorStatus = $"已取色 {color}，位置 ({point.X}, {point.Y})；请保存配置";
-            LastMessage = ColorStatus;
+            ProfileOperations.ValidateForRepeat([source]);
+            var testProfile = ProfileOperations.Copy(source, false);
+            testProfile.Enabled = true;
+            testProfile.DurationSeconds = KeyTestDurationSeconds;
+            testProfile.DurationMilliseconds = 0;
+            _keyTestCancellation = new CancellationTokenSource();
+            OnPropertyChanged(nameof(IsKeyTestRunning));
+            OnPropertyChanged(nameof(CanTestWorkflow));
+            CommandManager.InvalidateRequerySuggested();
+            LastMessage = $"正在试运行“{source.Name}”的按键流程，最长 {KeyTestDurationSeconds} 秒";
+            _runtime.Arm();
+            await _runtime.TriggerAsync(testProfile, _keyTestCancellation.Token);
+            if (!_keyTestCancellation.IsCancellationRequested)
+                LastMessage = _runtime.LastRunFailed ? "按键测试失败，请检查输入设备和日志" : "按键测试完成，所有按键已释放";
         }
-        catch (OperationCanceledException) { }
-        catch (Exception e) { ReportColorError(e); }
+        catch (Exception exception) when (exception is InvalidDataException or ArgumentException or InvalidOperationException)
+        {
+            LastMessage = $"无法测试：{exception.Message}";
+        }
         finally
         {
-            _profileBusy = false;
-            if (!_disposed) { ConfigureHotkeys(); OnPropertyChanged(nameof(CanEdit)); CommandManager.InvalidateRequerySuggested(); }
+            _keyTestCancellation?.Dispose();
+            _keyTestCancellation = null;
+            if (!_disposed)
+            {
+                OnPropertyChanged(nameof(IsKeyTestRunning));
+                OnPropertyChanged(nameof(CanEdit));
+                OnPropertyChanged(nameof(CanTestWorkflow));
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
     }
 
-    private void TestColor()
+    private void StopKeyTest()
     {
-        try
-        {
-            AutomationValidation.Validate(SelectedProfile);
-            var condition = SelectedProfile.ColorCondition;
-            var actual = ColorMatcher.Sample(_screenReader, condition);
-            ColorStatus = $"当前 {actual} · {(ColorMatcher.Classify(actual, condition) switch { true => "已激活", false => "未激活", null => "未知状态（两色均未明确匹配）" })}";
-            _logger.Info($"颜色检测 x={condition.X}, y={condition.Y}, target={condition.Target}, tolerance={condition.Tolerance}: {ColorStatus}");
-        }
-        catch (Exception e) { ReportColorError(e); }
-    }
-
-    private void ReportColorError(Exception e)
-    {
-        _logger.Error("屏幕取色失败", e);
-        ColorStatus = $"取色失败：{e.Message}";
-        LastMessage = ColorStatus;
+        if (_keyTestCancellation is null) return;
+        _keyTestCancellation.Cancel();
+        _runtime.Stop("按键测试已停止并释放按键");
+        LastMessage = "按键测试已停止，所有按键已释放";
     }
 }

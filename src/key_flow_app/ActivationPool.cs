@@ -33,6 +33,11 @@ public sealed class ActivationPool : IDisposable
             return ReferenceEquals(currentRequest?.CoalesceKey, coalesceKey) && current?.IsCancellationRequested != true
                 || requests.Any(request => ReferenceEquals(request.CoalesceKey, coalesceKey) && !request.Cancellation.IsCancellationRequested);
     }
+    public bool IsExecuting(object coalesceKey)
+    {
+        lock (gate)
+            return ReferenceEquals(currentRequest?.CoalesceKey, coalesceKey) && current?.IsCancellationRequested != true;
+    }
 
     public ActivationPool(Func<KeyProfile, CancellationToken, Task> execute)
         : this((profile, token, _) => execute(profile, token)) { }

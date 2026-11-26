@@ -84,7 +84,7 @@ internal static class MainWorkspaceChecks
             Assert.Same(state.DeleteGroupCommand, deleteGroup.Command);
             Assert.Same(groups[2], deleteGroup.CommandParameter);
             Save(control, "main-group.png");
-            state.IsMonitoring = true; state.Notify(); Pump(host); Save(control, "main-monitoring.png");
+            state.IsListening = true; state.Notify(); Pump(host); Save(control, "main-listening.png");
             var empty = new WorkspaceState([], []);
             control.DataContext = empty; Pump(host);
             Assert.Empty(list.Items);
@@ -163,15 +163,15 @@ internal static class MainWorkspaceChecks
         public string MainScopeTitle => MainGroup?.Name ?? "全部配置";
         public string MainGroupAction => "激活此组";
         public string MainProfileAction => "启用方案";
-        public string MainState => IsRunning ? "运行中" : IsMonitoring ? "颜色监听中" : "已停止";
-        public string MainActivity => IsRunning ? "正在执行：我的配置 01" : IsMonitoring ? "等待颜色条件满足" : "当前没有方案执行";
+        public string MainState => IsRunning ? "运行中" : IsListening ? "监听中" : "已停止";
+        public string MainActivity => IsRunning ? "正在执行：我的配置 01" : IsListening ? "监听快捷键" : "当前没有方案执行";
         public string MainCounts => $"{MainParticipants.Count()} 个已激活 · {(IsRunning ? 1 : 0)} 个执行或排队";
         public string MainEmptyText => Profiles.Count == 0 ? "还没有配置，点击“新建配置”开始" : "没有匹配的配置，试试其他关键词或分组";
         public string LastMessage => "准备完成，可以编辑配置或开始执行";
         public string HotkeyStatus => "正在监听方案快捷键 · Ctrl+Shift+F10 紧急停止 · 按键继续传递";
         public bool MainHasError => false;
         public bool IsRunning { get; set; }
-        public bool IsMonitoring { get; set; }
+        public bool IsListening { get; set; }
         public bool IsPinned { get; set; }
         public bool IgnoreAllSchemes { get; set; }
         public int StartCount { get; private set; }

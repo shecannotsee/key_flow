@@ -45,7 +45,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         set => SetIgnoreAllSchemes(value);
     }
     public bool IsPinned { get => _isPinned; set { _isPinned = value; OnPropertyChanged(); } }
-    public string WindowTitle => IsRunning ? "正在运行 — key_flow" : IsMonitoring ? "正在监听 — key_flow" : "已停止 — key_flow";
+    public string WindowTitle => IsRunning ? "正在运行 — key_flow" : IsListening ? "监听中 — key_flow" : "已停止 — key_flow";
     public int EditorStep { get => _editorStep; private set { _editorStep = Math.Clamp(value, 0, 2); OnPropertyChanged(); OnPropertyChanged(nameof(IsFirstEditorStep)); OnPropertyChanged(nameof(IsLastEditorStep)); } }
     public bool IsFirstEditorStep => EditorStep == 0;
     public bool IsLastEditorStep => EditorStep == 2;
@@ -95,10 +95,10 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _selectedProfile;
         set
         {
-            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring) return;
+            if (value is null || ReferenceEquals(value, _selectedProfile) || _runtime.IsBusy || _activationPool.IsBusy) return;
             CancelCapture();
             _selectedProfile.PropertyChanged -= SelectedProfileChanged;
-            _selectedProfile = value; SelectedStep = null; ColorStatus = "尚未检测";
+            _selectedProfile = value; SelectedStep = null;
             _selectedProfile.PropertyChanged += SelectedProfileChanged;
             OnPropertyChanged(); OnPropertyChanged(nameof(SelectedProfileLabel)); OnPropertyChanged(nameof(UseToggleHotkey));
             OnPropertyChanged(nameof(ResetsOnRetrigger)); OnPropertyChanged(nameof(IgnoresRetrigger));
@@ -119,7 +119,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     public string StartHotkeyLabel => UseToggleHotkey ? "开始 / 停止" : "开始";
     public KeyStep? SelectedStep { get => _selectedStep; set { _selectedStep = value; OnPropertyChanged(); } }
-    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !_activationPool.IsBusy && !IsMonitoring && !_profileBusy;
+    public bool CanEdit => IsInitialized && !_disposed && !_runtime.IsBusy && !_activationPool.IsBusy && !_profileBusy;
     public string StateText { get => _stateText; private set { _stateText = value; OnPropertyChanged(); } }
     public string LastMessage { get => _lastMessage; private set { _lastMessage = value; OnPropertyChanged(); } }
     public ICommand SaveCommand { get; }
@@ -183,7 +183,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             logger.Info("窗口已启动：等待用户点击初始化 DD");
         }
         catch (Exception exception) { logger.Error("DD 初始化失败", exception); throw; }
-        _runtime = new RuntimeController(new SequenceRunner(sender, _screenReader), sender, logger);
+        _runtime = new RuntimeController(new SequenceRunner(sender), sender, logger);
         _activationPool = new ActivationPool(ExecutePooledProfileAsync);
         _activationPool.Changed += () => Application.Current.Dispatcher.BeginInvoke(new Action(() =>
         {
@@ -191,6 +191,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 OnPropertyChanged(nameof(ActivationPoolStatus));
                 OnPropertyChanged(nameof(CanEdit));
+                OnPropertyChanged(nameof(CanTestWorkflow));
                 CommandManager.InvalidateRequerySuggested();
             }
         }));
@@ -205,8 +206,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsRunning));
                 OnPropertyChanged(nameof(WindowTitle));
             }
-            StateText = state == RuntimeState.Running ? "运行中" : IsMonitoring ? $"监听中 · {_monitorCancellations.Count} 个方案" : "已停止";
+            StateText = state == RuntimeState.Running ? "运行中" : _isListening ? "监听中" : "已停止";
             OnPropertyChanged(nameof(CanEdit));
+            OnPropertyChanged(nameof(CanTestWorkflow));
             CommandManager.InvalidateRequerySuggested();
             LastMessage = _runtime.LastMessage.StartsWith("执行失败：", StringComparison.Ordinal)
                 ? "执行失败，已停止。请检查配置后重试，问题详情已记录" : _runtime.LastMessage;
@@ -238,11 +240,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             if (parameter is not KeyProfile profile || !CanEdit) return;
             if (!profile.Enabled)
             {
-                _monitorCancellations.GetValueOrDefault(profile)?.Cancel();
                 _activationPool.Cancel(profile);
             }
-            else if (_isListening && profile.ColorTriggerEnabled && ProfileParticipation.IsEligible(profile, Groups))
-                _ = StartMonitoringAsync(profile);
             else if (profile.Enabled)
                 StartListening();
             ConfigureHotkeys();
@@ -251,7 +250,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
                 ? $"方案“{profile.Name}”已启用；还需勾选所属配置组并启动监听才会触发"
                 : $"方案“{profile.Name}”已关闭，不会参与触发";
         }, parameter => CanEdit && parameter is KeyProfile profile && Profiles.Contains(profile));
-        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _isListening || _runtime.IsBusy || _activationPool.IsBusy || IsMonitoring);
+        StopCommand = new RelayCommand(_ => StopEverything("用户已停止"), _ => _isListening || _runtime.IsBusy || _activationPool.IsBusy);
         AddStepCommand = new RelayCommand(_ => AddStep(), _ => CanEdit);
         RemoveStepCommand = new RelayCommand(_ => RemoveStep(), _ => CanEdit && SelectedStep is not null && (!SelectedProfile.SequenceMode || SelectedProfile.Steps.Count > 2));
         MoveStepUpCommand = new RelayCommand(_ => MoveStep(-1), _ => CanEdit && SelectedStep is not null && SelectedProfile.Steps.IndexOf(SelectedStep) > 0);
@@ -286,9 +285,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         _isListening = true;
         OnPropertyChanged(nameof(IsListening));
         ConfigureHotkeys();
-        if (!IgnoreAllSchemes)
-            foreach (var profile in Profiles.Where(profile => ProfileParticipation.IsEligible(profile, Groups) && profile.ColorTriggerEnabled).ToArray())
-                _ = StartMonitoringAsync(profile);
         StateText = IgnoreAllSchemes ? "监听中 · 已忽略所有方案" : "监听中";
         LastMessage = IgnoreAllSchemes ? "监听已启动，当前忽略所有方案" : $"正在监听 {selectedGroups.Length} 个配置组中的 {enabledProfiles.Length} 个已启用方案";
         OnPropertyChanged(nameof(WindowTitle));
@@ -409,7 +405,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         _logger.Info($"Raw Input 键盘注册：error={_systemHotkeys.RawInputError}");
         _systemHotkeys.Pressed += id =>
         {
-            if (_disposed || _captureMode != CaptureMode.None) return;
+            if (_disposed || _captureMode != CaptureMode.None || IsKeyTestRunning) return;
             _logger.Info($"热键 source={_systemHotkeys.LastSource}, id={id}; {InputDiagnostics.DescribeForeground()}");
             if (id == 3) { StopEverything("紧急停止快捷键已触发"); return; }
             if (!_hotkeyActions.TryGetValue(id, out var action)) return;
@@ -418,7 +414,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             { StopProfile(action.Profile, $"方案“{action.Profile.Name}”的停止键已触发"); return; }
             if (action.IsToggle && IsProfileActive(action.Profile))
             { StopProfile(action.Profile, $"方案“{action.Profile.Name}”的开关键已触发"); return; }
-            if (action.Profile.ColorTriggerEnabled) { _ = StartMonitoringAsync(action.Profile); return; }
             QueueProfileActivation(action.Profile, "键盘触发");
         };
         ConfigureHotkeys();
@@ -464,7 +459,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (_validationErrors != 0) { RejectStart("请先修正间隔输入"); return; }
         try { ProfileOperations.ValidateForRepeat([SelectedProfile]); }
         catch (InvalidDataException e) { RejectStart(e.Message); return; }
-        if (SelectedProfile.ColorTriggerEnabled) { _ = StartMonitoringAsync(SelectedProfile); return; }
         QueueProfileActivation(SelectedProfile, "界面开始");
     }
 
@@ -478,7 +472,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 Name = source.Name, Enabled = true, DurationSeconds = source.DurationSeconds,
                 DurationMilliseconds = source.DurationMilliseconds,
-                ColorCondition = source.ColorCondition.Copy(),
                 Steps = source.Steps.Select(step => new KeyStep(step.Key, step.WaitAfterMs) { HoldMs = step.HoldMs }).ToList(),
                 RetriggerMode = source.RetriggerMode
             };
@@ -623,10 +616,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         _disposed = true;
-        _automationCancellation.Cancel();
         _activationPool.Dispose();
         _editorWindow?.Close();
-        foreach (var cancellation in _monitorCancellations.Values.ToArray()) cancellation.Cancel();
+        StopKeyTest();
         _systemHotkeys?.Dispose();
         try { _runtime.Stop("程序退出"); }
         finally { _runtime.Shutdown(); }
@@ -649,7 +641,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         PropertyChanged?.Invoke(this, new(name));
         if (name is nameof(Profiles) or nameof(Groups) or nameof(ActivationPoolStatus) or nameof(SelectedProfile)
-            or nameof(SelectedProfileLabel) or nameof(CanEdit) or nameof(IsRunning) or nameof(IsMonitoring)
+            or nameof(SelectedProfileLabel) or nameof(CanEdit) or nameof(IsRunning) or nameof(IsListening)
             or nameof(LastMessage) or nameof(IsInitialized) or nameof(IgnoreAllSchemes))
             RefreshMainPresentation();
         if (name is nameof(Profiles) or nameof(ActivationPoolStatus))

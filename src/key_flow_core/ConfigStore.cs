@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 11;
+    public const int CurrentVersion = 12;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
