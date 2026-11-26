@@ -11,7 +11,10 @@ public sealed partial class MainViewModel
     private readonly Dictionary<KeyProfile, CancellationTokenSource> _monitorCancellations = [];
     public bool IsMonitoring => _monitorCancellations.Count > 0;
     private bool IsProfileActive(KeyProfile profile)
-        => _monitorCancellations.ContainsKey(profile) || _activeProfileActivations.GetValueOrDefault(profile) > 0;
+        // The activation pool is the source of truth for queued/running work.
+        // _activeProfileActivations is an observation counter and can remain
+        // non-zero briefly while a cancelled request is unwinding.
+        => _monitorCancellations.ContainsKey(profile) || _activationPool.IsActive(profile);
 
     private void StopEverything(string message)
     {
@@ -23,9 +26,57 @@ public sealed partial class MainViewModel
         _runtime.Stop(message);
     }
 
+    private void StopProfile(KeyProfile profile, string message)
+    {
+        var wasActive = IsProfileActive(profile);
+        _logger.Info($"方案停止请求 name={profile.Name}, active={wasActive}, pool={_activationPool.IsActive(profile)}, runtimeBusy={_runtime.IsBusy}");
+        _monitorCancellations.GetValueOrDefault(profile)?.Cancel();
+        _activationPool.Cancel(profile);
+        _activeProfileActivations.Remove(profile);
+        if (wasActive || _runtime.IsBusy) _runtime.Stop(message);
+        // The binding is unchanged when a profile stops. Keeping the listener's
+        // per-source key-down state avoids treating another input channel's
+        // copy of this same physical key press as a fresh toggle-on event.
+        RefreshMainPresentation();
+    }
+
+    private void SetIgnoreAllSchemes(bool ignore)
+    {
+        lock (_ignoreAllSchemesGate)
+        {
+            if (_ignoreAllSchemes == ignore) return;
+            _ignoreAllSchemes = ignore;
+        }
+        OnPropertyChanged(nameof(IgnoreAllSchemes));
+        if (ignore)
+        {
+            ConfigureHotkeys();
+            foreach (var cancellation in _monitorCancellations.Values.ToArray()) cancellation.Cancel();
+            _activationPool.CancelAll();
+            _runtime.Stop("已忽略所有方案");
+            StateText = _isListening ? "监听中 · 已忽略所有方案" : "已忽略所有方案";
+            LastMessage = "所有方案已忽略；方案启用状态和配置均已保留";
+        }
+        else if (_isListening)
+        {
+            ConfigureHotkeys();
+            foreach (var profile in Profiles.Where(profile => ProfileParticipation.IsEligible(profile, Groups) && profile.ColorTriggerEnabled).ToArray())
+                _ = StartMonitoringAsync(profile);
+            StateText = "监听中";
+            LastMessage = "已恢复已启用方案的触发响应";
+        }
+        else
+        {
+            StateText = "已停止";
+            LastMessage = "已取消忽略；启动监听后方案将恢复响应";
+        }
+        OnPropertyChanged(nameof(WindowTitle));
+        CommandManager.InvalidateRequerySuggested();
+    }
+
     private async Task StartMonitoringAsync(KeyProfile source)
     {
-        if (!IsInitialized || !_isListening || _disposed || _profileBusy || !IsParticipating(source) || !source.ColorTriggerEnabled || _monitorCancellations.ContainsKey(source)) return;
+        if (!IsInitialized || !_isListening || IgnoreAllSchemes || _disposed || _profileBusy || !IsParticipating(source) || !source.ColorTriggerEnabled || _monitorCancellations.ContainsKey(source)) return;
         try { ProfileOperations.ValidateForRepeat([source]); }
         catch (InvalidDataException exception) { RejectStart(exception.Message); return; }
 
@@ -46,10 +97,13 @@ public sealed partial class MainViewModel
                 async token =>
                 {
                     token.ThrowIfCancellationRequested();
-                    if (_disposed) throw new OperationCanceledException(token);
+                    if (_disposed || IgnoreAllSchemes) throw new OperationCanceledException(token);
                     _logger.Info($"颜色激活，方案进入激活池 name={profile.Name}");
-                    var submission = _activationPool.Submit(profile, source, source.RetriggerMode, token);
-                    await submission.Completion.ConfigureAwait(false);
+                    ActivationSubmission? submission;
+                    lock (_ignoreAllSchemesGate)
+                        submission = _ignoreAllSchemes ? null : _activationPool.Submit(profile, source, source.RetriggerMode, token);
+                    if (submission is null) return;
+                    await submission.Value.Completion.ConfigureAwait(false);
                     token.ThrowIfCancellationRequested();
                     _logger.Info($"颜色方案完成 name={profile.Name}，等待重新激活");
                 }, cancellation.Token,
@@ -75,6 +129,7 @@ public sealed partial class MainViewModel
         }
         finally
         {
+            var wasCancelled = cancellation.IsCancellationRequested;
             _monitorCancellations.Remove(source);
             if (!_disposed)
             {
@@ -82,6 +137,8 @@ public sealed partial class MainViewModel
                 LastMessage = IsMonitoring ? "其他方案仍在监听" : "监听和流程已停止";
                 OnPropertyChanged(nameof(IsMonitoring)); OnPropertyChanged(nameof(CanEdit)); OnPropertyChanged(nameof(WindowTitle));
                 CommandManager.InvalidateRequerySuggested();
+                if (wasCancelled && _isListening && !IgnoreAllSchemes && IsParticipating(source) && source.ColorTriggerEnabled)
+                    _ = StartMonitoringAsync(source);
             }
         }
     }

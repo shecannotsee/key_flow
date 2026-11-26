@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation.Provider;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -24,7 +25,7 @@ internal static class MainWorkspaceChecks
         }).ToList();
         var groups = Enumerable.Range(1, 14).Select(i => new ProfileGroup
         {
-            Name = $"工作流程组 {i:00}", Participates = i == 1,
+            Name = $"工作流程组 {i:00}", Participates = i == 1, IsSelectedForRun = i == 1,
             MemberIds = profiles.Skip((i - 1) * 5).Take(5).Select(p => p.Id).ToList()
         }).ToList();
         var state = new WorkspaceState(profiles, groups);
@@ -36,13 +37,16 @@ internal static class MainWorkspaceChecks
             var list = (ListBox)control.FindName("ProfilesList");
             Assert.Equal(80, list.Items.Count);
             Assert.Same(profiles[0], ((MainProfileRow)list.SelectedItem).Profile);
-            var start = (Button)control.FindName("StartButton");
-            var stop = (Button)control.FindName("StopButton");
-            Assert.Same(state.ArmCommand, start.Command);
-            Assert.Same(state.StopCommand, stop.Command);
-            var invoke = (IInvokeProvider)new ButtonAutomationPeer(start).GetPattern(PatternInterface.Invoke)!;
-            invoke.Invoke(); Pump(host);
-            Assert.Equal(1, state.StartCount);
+            Assert.Null(control.FindName("StartButton"));
+            var ignoreSwitch = (ToggleButton)control.FindName("IgnoreAllSchemesSwitch");
+            ignoreSwitch.IsChecked = true; Pump(host);
+            Assert.True(state.IgnoreAllSchemes);
+            ignoreSwitch.IsChecked = false; Pump(host);
+            Assert.False(state.IgnoreAllSchemes);
+            var enableAll = Descendants<Button>(control).First(button => Equals(button.Content, "开启所有配置"));
+            var disableAll = Descendants<Button>(control).First(button => Equals(button.Content, "关闭所有配置"));
+            Assert.Same(state.EnableAllProfilesCommand, enableAll.Command);
+            Assert.Same(state.DisableAllProfilesCommand, disableAll.Command);
 
             foreach (var size in new[] { new Size(980, 720), new Size(760, 560) })
             {
@@ -57,7 +61,7 @@ internal static class MainWorkspaceChecks
                 Assert.Equal(before, list.TranslatePoint(new Point(), control));
                 Assert.Equal(beforeSize, list.RenderSize);
                 Save(control, $"main-running-{size.Width}.png");
-                AssertInside(control, start); AssertInside(control, stop); AssertInside(control, list);
+                AssertInside(control, ignoreSwitch); AssertInside(control, list);
                 state.IsRunning = false; state.Notify(); Pump(host);
                 Save(control, $"main-stopped-{size.Width}.png");
             }
@@ -75,8 +79,7 @@ internal static class MainWorkspaceChecks
             groupList.SelectedItem = groups[2]; Pump(host);
             Assert.Equal(5, list.Items.Count);
             Assert.All(list.Items.Cast<MainProfileRow>(), row => Assert.Contains(row.Profile.Id, groups[2].MemberIds));
-            var groupButton = Descendants<Button>(control).Single(b => ReferenceEquals(b.Command, state.ToggleGroupCommand));
-            Assert.Same(groups[2], groupButton.CommandParameter);
+            Assert.DoesNotContain(Descendants<CheckBox>(control), box => ReferenceEquals(box.DataContext, groups[2]));
             var deleteGroup = (Button)control.FindName("DeleteGroupButton");
             Assert.Same(state.DeleteGroupCommand, deleteGroup.Command);
             Assert.Same(groups[2], deleteGroup.CommandParameter);
@@ -85,7 +88,7 @@ internal static class MainWorkspaceChecks
             var empty = new WorkspaceState([], []);
             control.DataContext = empty; Pump(host);
             Assert.Empty(list.Items);
-            Assert.False(start.IsEnabled);
+            Assert.Null(control.FindName("StartButton"));
             Save(control, "main-empty.png");
         }
         finally { host.Close(); }
@@ -170,8 +173,11 @@ internal static class MainWorkspaceChecks
         public bool IsRunning { get; set; }
         public bool IsMonitoring { get; set; }
         public bool IsPinned { get; set; }
+        public bool IgnoreAllSchemes { get; set; }
         public int StartCount { get; private set; }
         public ICommand ArmCommand { get; }
+        public ICommand EnableAllProfilesCommand { get; } = new RelayCommand(_ => { });
+        public ICommand DisableAllProfilesCommand { get; } = new RelayCommand(_ => { });
         public ICommand ShowAllProfilesCommand { get; }
         public ICommand StopCommand { get; } = new RelayCommand(_ => { });
         public ICommand NewGroupCommand { get; } = new RelayCommand(_ => { });

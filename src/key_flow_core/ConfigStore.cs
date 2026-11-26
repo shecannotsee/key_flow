@@ -4,7 +4,7 @@ namespace key_flow_core;
 
 public sealed class JsonConfigStore(string path)
 {
-    public const int CurrentVersion = 10;
+    public const int CurrentVersion = 11;
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
     public async Task<AppConfig> LoadAsync()
     {
@@ -91,7 +91,7 @@ public sealed class JsonConfigStore(string path)
         {
             Version = CurrentVersion,
             Profiles = [profile],
-            Groups = [new ProfileGroup { Name = "默认配置组", IsDefault = true, Participates = false, MemberIds = [profile.Id] }]
+            Groups = [new ProfileGroup { Name = "默认配置组", IsDefault = true, IsSelectedForRun = true, Participates = true, MemberIds = [profile.Id] }]
         };
     }
 
@@ -99,24 +99,29 @@ public sealed class JsonConfigStore(string path)
     {
         config.Profiles ??= [];
         config.Groups ??= [];
+        var hadGroups = config.Groups.Count > 0;
         var defaultGroup = config.Groups.FirstOrDefault(group => group.IsDefault)
             ?? config.Groups.FirstOrDefault(group => group.Name == "默认配置组");
         if (defaultGroup is null)
         {
-            defaultGroup = new ProfileGroup { Name = "默认配置组", IsDefault = true };
+            defaultGroup = new ProfileGroup { Name = "默认配置组", IsDefault = true, IsSelectedForRun = !hadGroups, Participates = !hadGroups };
             config.Groups.Insert(0, defaultGroup);
         }
         else defaultGroup.IsDefault = true;
 
-        // Migrate the old independent profile switch into both the new enabled state and,
-        // only for groups that relied on it, the owning group's activation state.
-        if (version < CurrentVersion)
+        // Preserve the old independent profile switch migration for pre-v10 data.
+        if (version < 10)
             foreach (var group in config.Groups.Where(group => !group.Participates))
                 if (config.Profiles.Any(profile => group.MemberIds.Contains(profile.Id) && profile.IsInActivationPool))
                     group.Participates = true;
-        if (version < CurrentVersion)
+        if (version < 10)
             foreach (var profile in config.Profiles)
                 profile.Enabled = profile.IsInActivationPool || config.Groups.Any(group => group.Participates && group.MemberIds.Contains(profile.Id));
+        // v11 replaces the long-lived group activation flag with a persisted run selection.
+        // Copy the old value once so existing configurations keep their effective scope.
+        if (version < 11)
+            foreach (var group in config.Groups)
+                group.IsSelectedForRun = group.Participates;
 
         var defaultSeen = false;
         foreach (var group in config.Groups)
@@ -145,6 +150,7 @@ public sealed class JsonConfigStore(string path)
             profile.GroupName = owner.Name;
         }
         foreach (var group in config.Groups.Where(group => group != defaultGroup)) group.IsDefault = false;
+        foreach (var group in config.Groups) group.Participates = group.IsSelectedForRun;
         config.Version = CurrentVersion;
     }
 

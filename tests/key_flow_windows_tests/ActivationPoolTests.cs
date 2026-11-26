@@ -55,6 +55,56 @@ public sealed class ActivationPoolTests
     }
 
     [Fact]
+    public async Task ProfileToggleCanObserveAndCancelItsOwnActiveRequest()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pool = new ActivationPool(async (_, token, _) =>
+        {
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        });
+        var profile = new KeyProfile { Name = "toggle" };
+        var submitted = pool.Submit(profile, profile, RetriggerMode.IgnoreWhileActive);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(pool.IsActive(profile));
+        pool.Cancel(profile);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => submitted.Completion.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.False(pool.IsActive(profile));
+        pool.Dispose();
+    }
+
+    [Fact]
+    public async Task CancelledProfileCanBeSubmittedAgainForTheNextToggleOn()
+    {
+        var started = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pool = new ActivationPool(async (_, token, _) =>
+        {
+            Interlocked.Increment(ref started);
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        });
+        var profile = new KeyProfile { Name = "single-key-toggle" };
+
+        var first = pool.Submit(profile, profile, RetriggerMode.IgnoreWhileActive);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(pool.IsActive(profile));
+
+        pool.Cancel(profile);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.Completion.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.False(pool.IsActive(profile));
+
+        var next = pool.Submit(profile, profile, RetriggerMode.IgnoreWhileActive);
+        await WaitUntilAsync(() => Volatile.Read(ref started) == 2);
+        Assert.True(pool.IsActive(profile));
+        pool.Cancel(profile);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => next.Completion.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        pool.Dispose();
+    }
+
+    [Fact]
     public async Task RepeatedActivationCoalescesAndRefreshesTimedWindow()
     {
         var started = 0;

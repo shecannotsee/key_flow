@@ -3,7 +3,7 @@
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !ifndef VERSION
-!define VERSION "1.5.4"
+!define VERSION "1.5.12"
 !endif
 Name "key_flow"
 OutFile "${OUTPUT}"
@@ -26,6 +26,9 @@ VIAddVersionKey "LegalCopyright" "key_flow"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN "$INSTDIR\key_flow.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "安装完成后运行 key_flow"
+!define MUI_FINISHPAGE_RUN_CHECKED
 !define MUI_FINISHPAGE_TEXT "key_flow 已安装。可通过桌面或开始菜单打开。首次打开后，点击“准备使用”。"
 !insertmacro MUI_PAGE_FINISH
 !define MUI_UNCONFIRMPAGE_TEXT_TOP "卸载 key_flow 程序及快捷方式。个人配置、日志和系统共享输入组件将保留。"

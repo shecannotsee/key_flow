@@ -56,7 +56,7 @@ public sealed partial class MainViewModel
             var updated = new AppConfig
             {
                 Profiles = Profiles.ToList(),
-                Groups = Groups.Select(group => new ProfileGroup { Id = group.Id, Name = group.Name, IsDefault = group.IsDefault, Participates = group.Participates, MemberIds = group.MemberIds.ToList() }).ToList()
+                Groups = Groups.Select(group => new ProfileGroup { Id = group.Id, Name = group.Name, IsDefault = group.IsDefault, Participates = group.Participates, IsSelectedForRun = group.IsSelectedForRun, MemberIds = group.MemberIds.ToList() }).ToList()
             };
             ProfileParticipation.Remove(updated, profile);
             await _store.SaveAsync(updated);
@@ -93,6 +93,10 @@ public sealed partial class MainViewModel
             IsInitialized = true; InitializationText = "已就绪"; StateText = "已停止";
             LastMessage = "准备完成，可以编辑配置或开始执行";
             ConfigureHotkeys();
+            // Listening is a background service; enabled profiles become active
+            // automatically after the input backend is ready.
+            if (Profiles.Any(profile => profile.Enabled && ProfileParticipation.GroupFor(profile, Groups) is not null))
+                StartListening();
         }
         catch (Exception e)
         {

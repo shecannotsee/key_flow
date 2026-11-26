@@ -9,7 +9,7 @@ public sealed class MainPresentationTests
     {
         var first = new KeyProfile { Name = "Alpha", IsInActivationPool = false };
         var second = new KeyProfile { Name = "Beta", IsInActivationPool = true };
-        var group = new ProfileGroup { Name = "Office", Participates = true, MemberIds = [first.Id] };
+        var group = new ProfileGroup { Name = "Office", IsSelectedForRun = true, Participates = true, MemberIds = [first.Id] };
         KeyProfile[] profiles = [first, second];
         ProfileGroup[] groups = [group];
         Assert.Equal([first], MainProfileRow.Filter(profiles, groups, group, " ALPHA "));

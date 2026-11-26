@@ -4,12 +4,12 @@ using Xunit;
 public sealed class ProfileGroupTests
 {
     [Fact]
-    public void OnlyEnabledProfilesInActivatedOwningGroupAreEligible()
+    public void EnabledProfilesInAnyOwningGroupAreEligible()
     {
         var profile = new KeyProfile { Enabled = true, Steps = [new("E")] };
-        var group = new ProfileGroup { Participates = false, MemberIds = [profile.Id] };
-        Assert.False(ProfileParticipation.IsEligible(profile, [group]));
-        group.Participates = true;
+        var group = new ProfileGroup { IsSelectedForRun = false, MemberIds = [profile.Id] };
+        Assert.True(ProfileParticipation.IsEligible(profile, [group]));
+        group.IsSelectedForRun = true;
         Assert.True(ProfileParticipation.IsEligible(profile, [group]));
         profile.Enabled = false;
         Assert.False(ProfileParticipation.IsEligible(profile, [group]));
@@ -25,7 +25,7 @@ public sealed class ProfileGroupTests
         try
         {
             var profile = new KeyProfile { Enabled = true, Steps = [new("E")] };
-            var config = new AppConfig { Profiles = [profile], Groups = [new ProfileGroup { Name = "默认配置组", IsDefault = true, Participates = true, MemberIds = [profile.Id] }] };
+            var config = new AppConfig { Profiles = [profile], Groups = [new ProfileGroup { Name = "默认配置组", IsDefault = true, IsSelectedForRun = true, Participates = true, MemberIds = [profile.Id] }] };
             var store = new JsonConfigStore(path);
             await store.SaveAsync(config);
             config = await store.LoadAsync();
@@ -52,6 +52,7 @@ public sealed class ProfileGroupTests
             var legacyGroup = Assert.Single(config.Groups, group => group.Name == "Daily");
             Assert.Contains(config.Profiles[0].Id, legacyGroup.MemberIds);
             Assert.True(legacyGroup.Participates);
+            Assert.True(legacyGroup.IsSelectedForRun);
             Assert.True(config.Profiles[0].IsInActivationPool);
             Assert.True(config.Profiles[0].Enabled);
             Assert.Single(config.Groups, group => group.IsDefault);
@@ -62,5 +63,26 @@ public sealed class ProfileGroupTests
             Assert.Equal(1, reloaded.Groups.SelectMany(group => group.MemberIds).Count(id => id == "legacy"));
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task V10GroupActivationMigratesToRunSelectionWithoutChangingProfileEnabledState()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            await File.WriteAllTextAsync(path, """{"Version":10,"Profiles":[{"Id":"p","Name":"Keep enabled","Enabled":true,"GroupName":"Daily","Steps":[{"Key":"E"}]}],"Groups":[{"Id":"g","Name":"Daily","Participates":false,"MemberIds":["p"]},{"Id":"d","Name":"默认配置组","IsDefault":true,"Participates":true,"MemberIds":[]}]}""");
+            var store = new JsonConfigStore(path);
+            var loaded = await store.LoadAsync();
+            Assert.False(loaded.Groups.Single(group => group.Name == "Daily").IsSelectedForRun);
+            Assert.True(loaded.Groups.Single(group => group.IsDefault).IsSelectedForRun);
+            Assert.True(loaded.Profiles[0].Enabled);
+            await store.SaveAsync(loaded);
+            var again = await store.LoadAsync();
+            Assert.False(again.Groups.Single(group => group.Name == "Daily").IsSelectedForRun);
+            Assert.True(again.Groups.Single(group => group.IsDefault).IsSelectedForRun);
+            Assert.True(again.Profiles[0].Enabled);
+        }
+        finally { File.Delete(path); File.Delete(path + ".bak"); }
     }
 }

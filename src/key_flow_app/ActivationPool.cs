@@ -27,6 +27,12 @@ public sealed class ActivationPool : IDisposable
     public int PendingCount { get { lock (gate) return requests.Count; } }
     public bool IsBusy { get { lock (gate) return processing; } }
     public int ActiveCount { get { lock (gate) return requests.Count + (current is null ? 0 : 1); } }
+    public bool IsActive(object coalesceKey)
+    {
+        lock (gate)
+            return ReferenceEquals(currentRequest?.CoalesceKey, coalesceKey) && current?.IsCancellationRequested != true
+                || requests.Any(request => ReferenceEquals(request.CoalesceKey, coalesceKey) && !request.Cancellation.IsCancellationRequested);
+    }
 
     public ActivationPool(Func<KeyProfile, CancellationToken, Task> execute)
         : this((profile, token, _) => execute(profile, token)) { }

@@ -10,8 +10,12 @@ public sealed class ProfileGroup : INotifyPropertyChanged
     public bool IsDefault { get; set; }
     private string _name = "配置组";
     private bool _participates;
+    private bool _isSelectedForRun;
     public string Name { get => _name; set { _name = value; Changed(); } }
+    /// <summary>Legacy activation flag retained for loading older configuration files.</summary>
     public bool Participates { get => _participates; set { _participates = value; Changed(); } }
+    /// <summary>Whether this group is included the next time listening starts.</summary>
+    public bool IsSelectedForRun { get => _isSelectedForRun; set { _isSelectedForRun = value; Changed(); } }
     private List<string> _memberIds = [];
     public List<string> MemberIds { get => _memberIds; set { _memberIds = value; Changed(); } }
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -35,6 +39,6 @@ public static class ProfileParticipation
     public static bool IsEligible(KeyProfile profile, IEnumerable<ProfileGroup> groups)
     {
         var group = GroupFor(profile, groups);
-        return profile.Enabled && group?.Participates == true;
+        return profile.Enabled && group is not null;
     }
 }

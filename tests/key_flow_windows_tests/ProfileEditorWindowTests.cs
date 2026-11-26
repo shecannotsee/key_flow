@@ -168,7 +168,7 @@ public sealed class ProfileEditorWindowTests
         var first = new KeyProfile { Name = "我的方案 1", GroupName = "日常", IsInActivationPool = true };
         var second = new KeyProfile { Name = "我的方案 2", GroupName = "日常" };
         var third = new KeyProfile { Name = "我的方案 3", GroupName = "其他", IsInActivationPool = true };
-        var state = new SelectorState { Profiles = [first, second, third], SelectedProfile = second, Groups = [new ProfileGroup { Name = "日常组合", Participates = true, MemberIds = [first.Id, second.Id] }] };
+        var state = new SelectorState { Profiles = [first, second, third], SelectedProfile = second, Groups = [new ProfileGroup { Name = "日常组合", IsSelectedForRun = true, Participates = true, MemberIds = [first.Id, second.Id] }] };
         var selector = new ProfileSelector { DataContext = state, Margin = new Thickness(20) };
         var surface = new Border { Background = Brushes.White, Child = selector };
         var host = new Window { Content = surface, Width = 660, Height = 760, Left = -10000, Top = -10000, ShowInTaskbar = false, Opacity = 0 };
